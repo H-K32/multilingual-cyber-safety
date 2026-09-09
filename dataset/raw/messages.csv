@@ -1,0 +1,31 @@
+id,text,label,language,code_switched,threat_type,indicators,source
+001,"Hey, are we still meeting at 5pm today?",BENIGN,ENGLISH,false,NONE,,SYNTHETIC
+002,"Thanks for the update, I'll review the document tonight.",BENIGN,ENGLISH,false,NONE,,SYNTHETIC
+003,"Your appointment with Dr. Bekele is confirmed for Thursday at 10am.",BENIGN,ENGLISH,false,NONE,,SYNTHETIC
+004,"Can you send me the file from yesterday's meeting?",BENIGN,ENGLISH,false,NONE,,SYNTHETIC
+005,"Happy birthday! Hope you have a great day.",BENIGN,ENGLISH,false,NONE,,SYNTHETIC
+006,"Your account will be suspended today. Verify your account immediately: http://secure-bank0nline.com/verify",PHISHING,ENGLISH,false,CREDENTIAL_PHISHING,"urgency,account_verification,suspicious_url,credential_request",SYNTHETIC
+007,"Congratulations! You have won 50,000 ETB. Click here to claim your prize: http://bit.ly/claim-prize",SCAM,ENGLISH,false,PRIZE_SCAM,"reward,call_to_action,suspicious_url",SYNTHETIC
+008,"URGENT: Your bank account requires immediate verification. Send your OTP to complete the process.",PHISHING,ENGLISH,false,CREDENTIAL_PHISHING,"urgency,account_verification,otp_request,credential_request",SYNTHETIC
+009,"Congratulations! You have been selected for a remote job. Pay 500 ETB registration fee to continue.",SCAM,ENGLISH,false,JOB_SCAM,"reward,financial_request,call_to_action",SYNTHETIC
+010,"Your package could not be delivered. Pay the delivery fee using the link below: http://delivery-fee-pay.net",SCAM,ENGLISH,false,DELIVERY_SCAM,"financial_request,suspicious_url,call_to_action",SYNTHETIC
+011,"ሰላም፣ ዛሬ ከሰዓት 5 ሰዓት ላይ እንገናኝ?",BENIGN,AMHARIC,false,NONE,,SYNTHETIC
+012,"እናመሰግናለን፣ ስራው በደንብ ተከናውኗል።",BENIGN,AMHARIC,false,NONE,,SYNTHETIC
+013,"የቀጠሮዎ ቀን ሐሙስ ጠዋት 10 ሰዓት ነው።",BENIGN,AMHARIC,false,NONE,,SYNTHETIC
+014,"እባክዎ ትላንት የላክሁልዎትን ፋይል ይመልከቱ።",BENIGN,AMHARIC,false,NONE,,SYNTHETIC
+015,"መልካም ልደት! መልካም ቀን ይሁንልዎ።",BENIGN,AMHARIC,false,NONE,,SYNTHETIC
+016,"አካውንትዎ ዛሬ ይዘጋል። አሁኑኑ አካውንትዎን ያረጋግጡ፦ http://banki-verify.com",PHISHING,AMHARIC,false,CREDENTIAL_PHISHING,"urgency,account_verification,suspicious_url,credential_request",SYNTHETIC
+017,"እንኳን ደስ አለዎት! 50,000 ብር አሸንፈዋል። ሽልማቱን ለማግኘት እዚህ ይጫኑ።",SCAM,AMHARIC,false,PRIZE_SCAM,"reward,call_to_action",SYNTHETIC
+018,"የባንክ አካውንትዎ አስቸኳይ ማረጋገጫ ይፈልጋል። የOTP ኮድዎን ይላኩልን።",PHISHING,AMHARIC,false,CREDENTIAL_PHISHING,"urgency,account_verification,otp_request,credential_request",SYNTHETIC
+019,"ለርቀት ስራ ተመርጠዋል! ለመቀጠል 500 ብር የምዝገባ ክፍያ ያድርጉ።",SCAM,AMHARIC,false,JOB_SCAM,"reward,financial_request,call_to_action",SYNTHETIC
+020,"እቃዎ መድረስ አልቻለም። የመላኪያ ክፍያ በዚህ ሊንክ ይክፈሉ፦ http://pay-delivery-et.com",SCAM,AMHARIC,false,DELIVERY_SCAM,"financial_request,suspicious_url,call_to_action",SYNTHETIC
+021,"ሰላም, are we still on for our meeting today at 5pm?",BENIGN,MIXED,true,NONE,,SYNTHETIC
+022,"እናመሰግናለን for sending the report, ደህና እደር።",BENIGN,MIXED,true,NONE,,SYNTHETIC
+023,"Your appointment ከዶክተር ጋር is confirmed for Thursday at 10am.",BENIGN,MIXED,true,NONE,,SYNTHETIC
+024,"Please check the ፋይል that ላከልኝ yesterday.",BENIGN,MIXED,true,NONE,,SYNTHETIC
+025,"መልካም ልደት! Have a wonderful day, ውድ ጓደኛዬ።",BENIGN,MIXED,true,NONE,,SYNTHETIC
+026,"እንኳን ደስ አለዎት! You have won 50,000 ETB. Click here to claim your prize: http://bit.ly/etb-claim",SCAM,MIXED,true,PRIZE_SCAM,"reward,call_to_action,suspicious_url",SYNTHETIC
+027,"Your account ተዘግቷል። Please verify your account immediately: http://secure-verify-account.net",PHISHING,MIXED,true,CREDENTIAL_PHISHING,"urgency,account_verification,suspicious_url,credential_request",SYNTHETIC
+028,"URGENT: የባንክ አካውንትዎ requires immediate verification. Send your OTP code now.",PHISHING,MIXED,true,CREDENTIAL_PHISHING,"urgency,account_verification,otp_request,credential_request",SYNTHETIC
+029,"Congratulations! ለስራ ተመርጠዋል። Pay 500 ETB registration fee to continue.",SCAM,MIXED,true,JOB_SCAM,"reward,financial_request,call_to_action",SYNTHETIC
+030,"እቃዎ could not be delivered። Pay the delivery fee here: http://delivery-et-pay.com",SCAM,MIXED,true,DELIVERY_SCAM,"financial_request,suspicious_url,call_to_action",SYNTHETIC
