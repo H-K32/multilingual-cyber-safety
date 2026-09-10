@@ -1,8 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AnalyzeRequest(BaseModel):
-    message: str
+    message: str = Field(..., example="የእርስዎ telebirr ሂሳብ ታግዷል። http://cbe-verify.top/login")
 
 
 class AnalyzeResponse(BaseModel):
