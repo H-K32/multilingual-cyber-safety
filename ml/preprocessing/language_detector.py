@@ -1,3 +1,5 @@
+# ml/preprocessing/language_detector.py
+
 import re
 import pandas as pd
 
@@ -5,7 +7,6 @@ import pandas as pd
 class UnicodeLanguageDetector:
     """Rule-based language detector for English, Amharic, and Mixed text using Unicode character inspection."""
 
-    # URL regex to strip before language detection
     URL_PATTERN = re.compile(
         r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
     )
@@ -27,7 +28,6 @@ class UnicodeLanguageDetector:
 
     def detect_language(self, text: str) -> dict:
         """Detects language (AMHARIC, ENGLISH, MIXED, UNKNOWN) based on script proportions."""
-        # 1. Important: Strip URLs first so Latin URL characters don't dilute Amharic text
         clean_text = self.URL_PATTERN.sub("", str(text))
 
         ethiopic_count = 0
@@ -41,7 +41,6 @@ class UnicodeLanguageDetector:
 
         total_letters = ethiopic_count + latin_count
 
-        # 2. Check if total letter count meets minimum threshold
         if total_letters < self.min_letters:
             return {
                 "detected_language": "UNKNOWN",
@@ -54,7 +53,6 @@ class UnicodeLanguageDetector:
         ethiopic_ratio = ethiopic_count / total_letters
         latin_ratio = latin_count / total_letters
 
-        # 3. Classify based on minor script threshold (default 8%)
         if (
             ethiopic_ratio >= self.minor_script_threshold
             and latin_ratio >= self.minor_script_threshold
@@ -83,8 +81,21 @@ class UnicodeLanguageDetector:
         results = df[text_column].apply(self.detect_language).tolist()
         results_df = pd.DataFrame(results)
 
-        # Merge with existing dataframe
         return pd.concat([df.reset_index(drop=True), results_df], axis=1)
+
+
+# Global default instance & helper function for direct imports
+_default_detector = UnicodeLanguageDetector()
+
+def detect_language_and_codeswitch(text: str) -> dict:
+    """Helper wrapper function to support direct function imports."""
+    res = _default_detector.detect_language(text)
+    return {
+        "language": res["detected_language"],
+        "code_switched": res["is_code_switched"],
+        "ethiopic_ratio": res["ethiopic_ratio"],
+        "latin_ratio": res["latin_ratio"]
+    }
 
 
 if __name__ == "__main__":
