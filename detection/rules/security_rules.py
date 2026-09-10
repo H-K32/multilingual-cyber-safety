@@ -207,4 +207,70 @@ def detect_indicators(message: str) -> List[str]:
     if "reward_bait" in triggered_indicators and "financial_request" in triggered_indicators:
         triggered_indicators.add("advance_fee_scam_indicator")
 
-    return sorted(list(triggered_indicators))
+    return sorted(list(triggered_indicators)) 
+
+# Appended on day3 
+
+def map_threat_type(indicators: List[str], url_indicators: List[str], message: str) -> str:
+    """
+    Determines the specific threat category based on triggered rule indicators,
+    URL signals, and message content.
+    """
+    msg_lower = message.lower()
+    has_url = len(url_indicators) > 0 or bool(re.search(r"https?://[^\s]+", msg_lower))
+
+    is_telebirr = "telebirr" in msg_lower or "ቴሌብር" in msg_lower
+    is_cbe = "cbe" in msg_lower or "ንግድ ባንክ" in msg_lower or "commercial bank" in msg_lower
+
+    # Platform-Specific Threats
+    if is_telebirr and ("credential_request" in indicators or "fear_or_threat" in indicators or "account_verification_request" in indicators):
+        return "TELEBIRR_SCAM"
+
+    if is_cbe and ("credential_request" in indicators or "fear_or_threat" in indicators or "account_verification_request" in indicators or "suspicious_tld" in url_indicators or "lookalike_domain" in url_indicators):
+        return "BANK_PHISHING"
+
+    # Specific Scams & Phishing Vectors
+    if "credential_request" in indicators and (has_url or "urgency" in indicators or "account_verification_request" in indicators):
+        return "CREDENTIAL_PHISHING"
+
+    if "reward_bait" in indicators and ("financial_request" in indicators or "suspicious_call_to_action" in indicators or has_url):
+        return "PRIZE_SCAM"
+
+    if "job_scam_indicator" in indicators:
+        return "JOB_SCAM"
+
+    if "delivery_scam_indicator" in indicators:
+        return "DELIVERY_SCAM"
+
+    if "investment_scam_indicator" in indicators:
+        return "INVESTMENT_SCAM"
+
+    if "fake_account_suspension_warning" in indicators or ("fear_or_threat" in indicators and "possible_impersonation" in indicators):
+        return "ACCOUNT_TAKEOVER_ALERT"
+
+    if "lookalike_domain" in url_indicators or "ip_address_url" in url_indicators:
+        return "SUSPICIOUS_LINK"
+
+    if len(indicators) >= 2:
+        return "SUSPICIOUS_SOCIAL_ENGINEERING"
+
+    return "NONE"
+
+
+def analyze_security_rules(message: str, url_indicators: List[str] = None) -> Dict[str, Any]:
+    """
+    Main rule analysis entry point combining textual indicators, URL indicators,
+    and deterministic threat type mapping.
+    """
+    if url_indicators is None:
+        url_indicators = []
+
+    se_indicators = detect_indicators(message)
+    all_indicators = sorted(list(set(se_indicators + url_indicators)))
+    threat_type = map_threat_type(se_indicators, url_indicators, message)
+
+    return {
+        "indicators": all_indicators,
+        "social_engineering_indicators": se_indicators,
+        "threat_type": threat_type
+    }

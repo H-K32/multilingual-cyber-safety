@@ -29,3 +29,15 @@ id,text,label,language,code_switched,threat_type,indicators,source
 028,"URGENT: የባንክ አካውንትዎ requires immediate verification. Send your OTP code now.",PHISHING,MIXED,true,CREDENTIAL_PHISHING,"urgency,account_verification,otp_request,credential_request",SYNTHETIC
 029,"Congratulations! ለስራ ተመርጠዋል። Pay 500 ETB registration fee to continue.",SCAM,MIXED,true,JOB_SCAM,"reward,financial_request,call_to_action",SYNTHETIC
 030,"እቃዎ could not be delivered። Pay the delivery fee here: http://delivery-et-pay.com",SCAM,MIXED,true,DELIVERY_SCAM,"financial_request,suspicious_url,call_to_action",SYNTHETIC
+031,"የእርስዎ telebirr ሂሳብ ታግዷል። እባክዎን PIN ቁጥርዎን በስልክ ቁጥር 0911000000 ይላኩ።",PHISHING,AMHARIC,false,TELEBIRR_SCAM,"urgency,account_verification,credential_request,otp_request",SYNTHETIC
+032,"CBE Birr: Your account has been credited with 12,500 ETB. Click http://cbe-verify.top to claim.",SCAM,MIXED,true,BANK_PHISHING,"reward,suspicious_url,call_to_action",SYNTHETIC
+033,"Dear customer, your Ethio telecom 4G SIM needs activation. Dial *808# immediately.",BENIGN,ENGLISH,false,NONE,,SYNTHETIC
+034,"እንኳን ደስ አለዎት! 100,000 ብር አሸንፈዋል። ሽልማቱን ለመቀበል http://bit.ly/ethio-prize ይክፈቱ።",SCAM,AMHARIC,false,PRIZE_SCAM,"reward,call_to_action,suspicious_url",SYNTHETIC
+035,"Urgent security alert: Unauthorized attempt detected on your bank account. Reset PIN at http://192.168.1.1/login",PHISHING,ENGLISH,false,CREDENTIAL_PHISHING,"urgency,account_verification,credential_request,suspicious_url",SYNTHETIC
+036,"የተከበሩ ደንበኛ፡ 500 ብር የኢትዮ ቴሌኮም ሞባይል ካርድ ቦነስ አግኝተዋል። አሁኑኑ OTP ቁጥርዎን ይላኩ።",PHISHING,AMHARIC,false,OTP_PHISHING,"reward,urgency,otp_request,credential_request",SYNTHETIC
+037,"CBE Birr: You transferred 500 ETB to Abebe Kebede. Transaction ID: TXN987654. Thank you.",BENIGN,MIXED,true,NONE,,SYNTHETIC
+038,"Ethio telecom: You have successfully purchased 2GB 7-day data package. Balance: 45.00 ETB.",BENIGN,ENGLISH,false,NONE,,SYNTHETIC
+039,"Your telebirr PIN code is 482910. Never share this OTP or password with anyone, including telebirr staff.",BENIGN,MIXED,true,NONE,,SYNTHETIC
+040,"የቴሌብር አካውንትዎ ተቆልፏል። ለመክፈት የይለፍ ቃልዎን ወይም OTP ኮድዎን በ http://telebirr-login.net ያስገቡ።",PHISHING,AMHARIC,false,TELEBIRR_SCAM,"urgency,account_verification,credential_request,suspicious_url",SYNTHETIC
+041,"Congratulations! You won 50,000 birr prize from Dashen Bank. Send 1,000 ETB service fee to 0922001122.",SCAM,ENGLISH,false,PRIZE_SCAM,"reward,financial_request,call_to_action",SYNTHETIC
+042,"CBE Birr contact center: Call 951 for customer support. We will never ask for your PIN or OTP.",BENIGN,ENGLISH,false,NONE,,SYNTHETIC
