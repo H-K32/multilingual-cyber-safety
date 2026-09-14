@@ -38,9 +38,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  // 10.0.2.2 points to local FastAPI backend when running inside Android Emulator
-  //final String _apiUrl = 'http://10.0.2.2:8000/analyze'; Android Studio Emulator IP: 10.0.2.2
-  final String _apiUrl = 'http://10.0.3.2:8000/analyze';//Genymotion Emulator IP: 10.0.3.2
+  // Genymotion Emulator IP: 10.0.3.2
+  final String _apiUrl = 'http://10.0.3.2:8000/analyze';
 
   Future<void> _analyzeMessage() async {
     final text = _textController.text.trim();
@@ -194,7 +193,6 @@ class ResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Map backend JSON keys correctly
     final rawClassification = result['classification'] as String? ?? 'LOW_RISK';
     final riskScore = result['risk_score'] ?? 0;
     final language = result['language'] ?? 'Unknown';
@@ -202,7 +200,6 @@ class ResultScreen extends StatelessWidget {
     final indicators = List<String>.from(result['indicators'] ?? []);
     final urls = List<String>.from(result['urls'] ?? []);
 
-    // 2. Format classification display text (e.g., HIGH_RISK -> HIGH)
     final displayRiskLevel = rawClassification
         .replaceAll('_RISK', '')
         .replaceAll('_', ' ');
@@ -232,14 +229,18 @@ class ResultScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'Risk Level: $displayRiskLevel',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: cardColor,
+                        // Expanded prevents long titles from causing text overflow
+                        Expanded(
+                          child: Text(
+                            'Risk Level: $displayRiskLevel',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: cardColor,
+                            ),
                           ),
                         ),
+                        const SizedBox(width: 8),
                         Chip(
                           label: Text(
                             'Score: $riskScore / 100',
