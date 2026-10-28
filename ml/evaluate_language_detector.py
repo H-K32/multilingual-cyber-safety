@@ -1,7 +1,7 @@
 
 import os
 import pandas as pd
-from language_detector import UnicodeLanguageDetector
+from ml.preprocessing.language_detector import UnicodeLanguageDetector
 
 
 def evaluate_language_detection():

@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from preprocessor import MessagePreprocessor
+from ml.preprocessor import MessagePreprocessor
 
 
 def preprocess_and_save():

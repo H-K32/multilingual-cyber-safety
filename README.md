@@ -26,3 +26,51 @@ For a comprehensive breakdown of the project design, please review the documenta
 3. **Pure Local Scam Lure:** Native Amharic script financial reward fraud (`HIGH RISK`).
 4. **Lookalike Domain Phishing:** TLD impersonation and urgency detection (`HIGH RISK`).
 5. **The Ultimate Code-Switched Lure:** Core research showcase blending local script with global phishing infrastructure (`HIGH RISK`).
+
+## 🛠️ Local Setup
+
+1. Create and activate a virtual environment.
+2. Install dependencies:
+
+   ```bash
+   python -m pip install -r backend/requirements.txt
+   ```
+
+3. Install [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) for screenshot analysis support.
+
+4. Train the model if needed:
+
+   ```bash
+   python ml/train_pipeline.py
+   ```
+
+5. Start the backend:
+
+   ```bash
+   uvicorn backend.app.main:app --reload
+   ```
+
+6. Send a request to the analysis endpoint:
+
+   ```bash
+   curl -X POST http://127.0.0.1:8000/analyze \
+     -H "Content-Type: application/json" \
+     -d '{"message":"Your account will be suspended. Verify now: http://bit.ly/verify"}'
+   ```
+
+## 🔍 Key Features
+
+- **Screenshot OCR analysis** — Upload a PNG/JPEG screenshot; the backend extracts text via Tesseract, runs full risk analysis, and returns phone numbers found in the image with reputation lookups.
+- **Phone number reputation** — Check any Ethiopian phone number against the local community-report dataset.
+- **Report a number** — Submit suspicious numbers with categories and evidence notes.
+- **Sender identity verification** — Detects mismatches between the actual sender and a claimed official identity (e.g. a message claiming to be from Ethio Telecom shortcode 994 but arriving from a different number).
+- **Multilingual support** — English, Amharic, and code-switched (Amharic-English) message analysis.
+
+## Repository Structure
+
+- `backend/` — FastAPI application, API schemas, OCR, and phone reputation modules
+- `detection/` — Security rules, URL analysis, and risk scoring engine
+- `ml/` — Preprocessing, training, validation, and evaluation scripts
+- `dataset/` — Raw and processed message datasets
+- `mobile/` — Flutter demo app (Android/iOS/Web)
+- `docs/` — Architecture and project planning documents

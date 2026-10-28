@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3000mm" height="1000mm" viewBox="0 0 1800 600" role="img" aria-labelledby="title description">
+  <title id="title">Multilingual AI Cyber-Safety Assistant — CBE Cybersecurity Awareness Month Conference 2026</title>
+  <desc id="description">A wide, dark purple and gold exhibition banner presenting the Multilingual AI Cyber-Safety Assistant, its message and URL analysis capabilities, the conference theme and tagline, event details, and blank team contact fields. No CBE logo or endorsement is implied.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#100b18"/>
+      <stop offset="0.54" stop-color="#191026"/>
+      <stop offset="1" stop-color="#0d0a12"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#21152f"/>
+      <stop offset="1" stop-color="#15101e"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f1c96b"/>
+      <stop offset="1" stop-color="#d99b35"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#62429a"/>
+      <stop offset="1" stop-color="#302044"/>
+    </linearGradient>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#c6a35e" opacity="0.15"/>
+    </pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      text { font-family: "Segoe UI", "Noto Sans Ethiopic", Arial, sans-serif; }
+      .eyebrow { font-size: 15px; font-weight: 700; letter-spacing: 2.1px; }
+      .body { fill: #eee9f3; }
+      .muted { fill: #b6aabd; }
+      .goldText { fill: #f0c86c; }
+      .white { fill: #fff; }
+      .line { stroke: #806a91; stroke-opacity: .42; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="600" fill="url(#background)"/>
+  <rect width="1800" height="600" fill="url(#grid)" opacity=".65"/>
+  <path d="M0 0H760L520 600H0Z" fill="#241834" opacity=".23"/>
+  <circle cx="1470" cy="280" r="280" fill="#4d326e" opacity=".11"/>
+  <circle cx="1470" cy="280" r="210" fill="none" stroke="#d9ac54" stroke-opacity=".10" stroke-width="1"/>
+  <circle cx="1470" cy="280" r="250" fill="none" stroke="#a78bc4" stroke-opacity=".09" stroke-width="1"/>
+
+  <rect x="74" y="45" width="5" height="54" rx="2.5" fill="url(#gold)"/>
+  <text x="96" y="66" class="eyebrow goldText">COMMERCIAL BANK OF ETHIOPIA</text>
+  <text x="96" y="91" class="body" font-size="18" font-weight="600">3rd Annual Cybersecurity Awareness Month Conference 2026</text>
+  <text x="1726" y="66" text-anchor="end" class="eyebrow goldText">29–30 OCTOBER 2026</text>
+  <text x="1726" y="91" text-anchor="end" class="muted" font-size="17">Addis Ababa, Ethiopia</text>
+  <path d="M74 119H1726" class="line" stroke-width="1"/>
+
+  <text x="80" y="174" class="eyebrow muted">PROJECT SHOWCASE</text>
+  <text x="76" y="237" class="white" font-size="59" font-weight="700" letter-spacing="-1.6">Multilingual AI</text>
+  <text x="76" y="298" class="white" font-size="53" font-weight="700" letter-spacing="-1.6">Cyber-Safety Assistant</text>
+
+  <rect x="76" y="322" width="4" height="72" rx="2" fill="url(#gold)"/>
+  <text x="98" y="338" class="eyebrow goldText">CONFERENCE THEME</text>
+  <text x="98" y="367" class="body" font-size="22" font-weight="600">“Don't Make It Easy for Them:</text>
+  <text x="98" y="393" class="body" font-size="22" font-weight="600">AI-Powered Defense, Zero Trust Mindset”</text>
+  <text x="80" y="428" class="goldText" font-size="18" font-weight="600">“Building Human Cyber Resilience for 48 Million Digital Lives”</text>
+
+  <text x="80" y="467" class="eyebrow muted">WHAT IT DOES</text>
+  <g font-size="17" font-weight="500" class="body">
+    <circle cx="87" cy="493" r="4" fill="#e7b956"/>
+    <text x="101" y="499">AI-powered phishing and scam detection</text>
+    <circle cx="520" cy="493" r="4" fill="#e7b956"/>
+    <text x="534" y="499">English, Amharic and mixed-language analysis</text>
+    <circle cx="87" cy="527" r="4" fill="#e7b956"/>
+    <text x="101" y="533">Suspicious URL analysis</text>
+    <circle cx="520" cy="527" r="4" fill="#e7b956"/>
+    <text x="534" y="533">Explainable risk results and cybersecurity awareness</text>
+  </g>
+
+  <rect x="80" y="554" width="5" height="20" rx="2.5" fill="url(#gold)"/>
+  <text x="98" y="570" class="white" font-size="20" font-weight="700">Detect</text>
+  <text x="171" y="570" class="goldText" font-size="20" font-weight="700">→</text>
+  <text x="197" y="570" class="white" font-size="20" font-weight="700">Explain</text>
+  <text x="284" y="570" class="goldText" font-size="20" font-weight="700">→</text>
+  <text x="310" y="570" class="white" font-size="20" font-weight="700">Educate</text>
+  <text x="404" y="570" class="goldText" font-size="20" font-weight="700">→</text>
+  <text x="430" y="570" class="white" font-size="20" font-weight="700">Protect</text>
+
+  <path d="M1060 143V562" stroke="#8f73a4" stroke-opacity=".34" stroke-width="1"/>
+
+  <rect x="1100" y="145" width="626" height="308" rx="22" fill="url(#panel)" stroke="#70578b" stroke-opacity=".68"/>
+  <text x="1130" y="178" class="eyebrow muted">MULTILINGUAL MESSAGE ANALYSIS</text>
+
+  <g fill="none" stroke="#b494d1" stroke-opacity=".46" stroke-width="1.5">
+    <path d="M1264 271L1377 291L1504 260"/>
+    <path d="M1264 330L1377 310L1504 345"/>
+    <path d="M1264 271L1264 330M1504 260L1504 345"/>
+    <path d="M1320 220L1377 291M1444 220L1377 291M1320 390L1377 310M1444 390L1377 310"/>
+  </g>
+  <g fill="#e3bd69">
+    <circle cx="1264" cy="271" r="4"/><circle cx="1264" cy="330" r="4"/>
+    <circle cx="1504" cy="260" r="4"/><circle cx="1504" cy="345" r="4"/>
+    <circle cx="1320" cy="220" r="3"/><circle cx="1444" cy="220" r="3"/>
+    <circle cx="1320" cy="390" r="3"/><circle cx="1444" cy="390" r="3"/>
+  </g>
+
+  <rect x="1123" y="215" width="171" height="151" rx="14" fill="#100d17" stroke="#59466d"/>
+  <circle cx="1146" cy="240" r="10" fill="#4e3970"/>
+  <path d="M1141 240h10M1146 235v10" stroke="#ecd18e" stroke-width="1.6" stroke-linecap="round"/>
+  <text x="1165" y="245" class="eyebrow goldText" font-size="11" letter-spacing="1">MESSAGE</text>
+  <path d="M1142 263h129M1142 275h110" stroke="#7d6b8b" stroke-opacity=".65" stroke-width="3" stroke-linecap="round"/>
+  <text x="1142" y="307" class="body" font-size="13" font-weight="600">English · አማርኛ</text>
+  <text x="1142" y="330" class="muted" font-size="12">Mixed-language ready</text>
+  <rect x="1142" y="341" width="97" height="14" rx="7" fill="#3a2b4d"/>
+  <text x="1190" y="352" text-anchor="middle" fill="#d8c5eb" font-size="9" font-weight="700" letter-spacing=".8">SYNTHETIC DEMO</text>
+
+  <path d="M1377 245L1420 261V292C1420 326 1403 346 1377 361C1351 346 1334 326 1334 292V261Z" fill="#d2a94e" opacity=".14" filter="url(#glow)"/>
+  <path d="M1377 250L1413 264V291C1413 319 1399 337 1377 351C1355 337 1341 319 1341 291V264Z" fill="url(#shield)" stroke="#e7bd62" stroke-width="2"/>
+  <path d="M1357 294L1371 308L1398 280" fill="none" stroke="#f2d68e" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="1377" cy="299" r="61" fill="none" stroke="#b798cf" stroke-opacity=".25"/>
+
+  <rect x="1460" y="215" width="240" height="151" rx="14" fill="#100d17" stroke="#59466d"/>
+  <text x="1481" y="244" class="eyebrow goldText" font-size="11" letter-spacing="1">EXPLAINABLE RESULTS</text>
+  <circle cx="1493" cy="272" r="7" fill="#d7b256"/>
+  <path d="M1508 272h164" stroke="#6f5c7f" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="1493" cy="297" r="7" fill="#9779b6"/>
+  <path d="M1508 297h133" stroke="#6f5c7f" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="1493" cy="322" r="7" fill="#c18a4a"/>
+  <path d="M1508 322h151" stroke="#6f5c7f" stroke-width="3" stroke-linecap="round"/>
+  <text x="1481" y="350" class="muted" font-size="12">Understand the risk. Learn what to do.</text>
+
+  <g transform="translate(1123 389)">
+    <path d="M0 0H578" stroke="#70578b" stroke-opacity=".4"/>
+    <circle cx="13" cy="28" r="6" fill="#e7bd62"/>
+    <circle cx="157" cy="28" r="6" fill="#b99bd4"/>
+    <circle cx="301" cy="28" r="6" fill="#e7bd62"/>
+    <circle cx="445" cy="28" r="6" fill="#b99bd4"/>
+    <path d="M19 28H151M163 28H295M307 28H439" stroke="#8e78a2" stroke-width="1.4"/>
+    <text x="13" y="54" text-anchor="middle" class="body" font-size="12" font-weight="600">Detect</text>
+    <text x="157" y="54" text-anchor="middle" class="body" font-size="12" font-weight="600">Explain</text>
+    <text x="301" y="54" text-anchor="middle" class="body" font-size="12" font-weight="600">Educate</text>
+    <text x="445" y="54" text-anchor="middle" class="body" font-size="12" font-weight="600">Protect</text>
+  </g>
+
+  <rect x="1100" y="476" width="626" height="87" rx="13" fill="#120e19" stroke="#806a91" stroke-opacity=".58"/>
+  <text x="1124" y="501" class="eyebrow goldText" font-size="10" letter-spacing="1.3">TEAM / START-UP NAME</text>
+  <path d="M1124 533H1371" stroke="#8f7e99" stroke-opacity=".62" stroke-width="1.2"/>
+  <text x="1400" y="501" class="eyebrow goldText" font-size="10" letter-spacing="1.3">REPRESENTATIVE DETAILS</text>
+  <text x="1400" y="522" class="muted" font-size="11">Name · Phone · Email</text>
+  <path d="M1400 543H1701" stroke="#8f7e99" stroke-opacity=".62" stroke-width="1.2"/>
+</svg>
