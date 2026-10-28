@@ -145,14 +145,26 @@ def analyze_message(
         indicators = list(dict.fromkeys(indicators + ["sender_identity_mismatch"]))
 
     # 7. Phone reputation lookups
-    phone_reputation = lookup_phone_number(sender_phone)
+    try:
+        phone_reputation = lookup_phone_number(sender_phone)
+    except RuntimeError:
+        phone_reputation = {
+            "status": "service_unavailable",
+            "explanation": "The phone reputation database is temporarily unavailable.",
+        }
 
     # Reputation lookups for phone numbers found inside the message body
     extracted_numbers = extract_phone_numbers_from_text(message)
-    numbers_in_message = [
-        {"phone_number": num, **lookup_phone_number(num)}
-        for num in extracted_numbers
-    ]
+    numbers_in_message = []
+    for num in extracted_numbers:
+        try:
+            lookup = lookup_phone_number(num)
+        except RuntimeError:
+            lookup = {
+                "status": "service_unavailable",
+                "explanation": "The phone reputation database is temporarily unavailable.",
+            }
+        numbers_in_message.append({"phone_number": num, **lookup})
 
     threat_type = determine_threat_type(indicators, message)
     recommendation = generate_recommendation(classification, threat_type)

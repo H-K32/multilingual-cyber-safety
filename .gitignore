@@ -29,3 +29,8 @@ htmlcov/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Firebase local cache
+mobile/.firebase/
+
+ 

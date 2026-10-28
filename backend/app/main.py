@@ -1,5 +1,7 @@
 # backend/app/main.py
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,6 +16,15 @@ from backend.app.image_ocr import (
     OCREngineUnavailableError,
     extract_text_from_image,
 )
+from backend.app.db import init_db, close_db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+    close_db()
+
 
 app = FastAPI(
     title="Multilingual Cyber-Safety Assistant",
@@ -22,6 +33,7 @@ app = FastAPI(
         "ML predictions only when a trained model loads and produces a prediction."
     ),
     version="0.4.0",
+    lifespan=lifespan,
 )
 
 # Enable CORS for mobile & web clients
@@ -98,10 +110,16 @@ async def analyze_image(file: UploadFile = File(...)):
 
         # Extract phone numbers found in the OCR text and look them up
         extracted_phones = extract_phone_numbers_from_text(extracted_text)
-        phone_lookups = [
-            {"phone_number": num, **lookup_phone_number(num)}
-            for num in extracted_phones
-        ]
+        phone_lookups = []
+        for num in extracted_phones:
+            try:
+                lookup = lookup_phone_number(num)
+            except RuntimeError:
+                lookup = {
+                    "status": "service_unavailable",
+                    "explanation": "The phone reputation database is temporarily unavailable.",
+                }
+            phone_lookups.append({"phone_number": num, **lookup})
 
         # Run full message analysis on the extracted text
         analysis = analyze_message(extracted_text, input_method="image_ocr")
@@ -122,7 +140,10 @@ def check_number(body: dict):
     phone = body.get("phone_number", "") if isinstance(body, dict) else ""
     if not phone or not str(phone).strip():
         raise HTTPException(status_code=400, detail="phone_number is required.")
-    return lookup_phone_number(str(phone).strip())
+    try:
+        return lookup_phone_number(str(phone).strip())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @app.post("/report")
@@ -139,7 +160,11 @@ def report_number(body: dict):
             detail=f"categories must be a non-empty list. Allowed: {', '.join(sorted(ALLOWED_CATEGORIES))}.",
         )
     evidence = str(body.get("evidence_note", ""))[:500]
-    result = submit_report(phone, raw_cats, evidence)
+    try:
+        result = submit_report(phone, raw_cats, evidence)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
     if result["status"] in {"invalid_number", "invalid_categories"}:
         raise HTTPException(status_code=400, detail=result["explanation"])
     return result

@@ -1,40 +1,31 @@
-import csv
+"""Tests for phone_reputation module — normalization, lookup, sender identity,
+phone-number extraction, and database configuration.
+"""
 
-from backend.app import phone_reputation
+from datetime import date
+import pytest
+
+from backend.app import db, phone_reputation
 from backend.app.analyzer import analyze_message
 
 
-CSV_FIELDS = [
-    "phone_number",
-    "country_code",
-    "report_count",
-    "categories",
-    "source",
-    "first_reported",
-    "last_reported",
-    "verification_status",
-    "evidence_note",
-]
+def _seed_report(mock_db_layer, verification_status="unverified"):
+    mock_db_layer.summary["+251911234567"] = {
+        "phone_e164": "+251911234567",
+        "country_code": "251",
+        "report_count": 2,
+        "categories": ["spam_calls", "phishing"],
+        "source": "synthetic test fixture only",
+        "first_reported": date.fromisoformat("2026-01-01"),
+        "last_reported": date.fromisoformat("2026-01-02"),
+        "verification_status": verification_status,
+        "evidence_note": "Synthetic fixture; not a real report.",
+    }
 
 
-def _write_synthetic_report(path, verification_status="unverified"):
-    with path.open("w", encoding="utf-8", newline="") as dataset:
-        writer = csv.DictWriter(dataset, fieldnames=CSV_FIELDS)
-        writer.writeheader()
-        writer.writerow(
-            {
-                "phone_number": "+251911234567",
-                "country_code": "251",
-                "report_count": "2",
-                "categories": "spam_calls|phishing",
-                "source": "synthetic test fixture only",
-                "first_reported": "2026-01-01",
-                "last_reported": "2026-01-02",
-                "verification_status": verification_status,
-                "evidence_note": "Synthetic fixture; not a real report.",
-            }
-        )
-
+# ---------------------------------------------------------------------------
+# normalize_phone_number — pure function, no DB needed
+# ---------------------------------------------------------------------------
 
 def test_equivalent_ethiopian_mobile_formats_normalize_to_the_same_number():
     expected = ("+251911234567", "251")
@@ -53,31 +44,21 @@ def test_distinct_and_invalid_numbers_are_not_collapsed():
         "251",
     )
     assert phone_reputation.normalize_phone_number("09112345") == (None, None)
-    assert phone_reputation.normalize_phone_number("+2510911234567") == (
-        None,
-        None,
-    )
-    assert phone_reputation.normalize_phone_number("+99912345678") == (
-        None,
-        None,
-    )
+    assert phone_reputation.normalize_phone_number("+2510911234567") == (None, None)
+    assert phone_reputation.normalize_phone_number("+99912345678") == (None, None)
 
 
-def test_lookup_skips_missing_and_invalid_numbers(tmp_path, monkeypatch):
-    _write_synthetic_report(tmp_path / "reports.csv")
-    monkeypatch.setattr(phone_reputation, "DATASET_PATH", tmp_path / "reports.csv")
+# ---------------------------------------------------------------------------
+# lookup_phone_number
+# ---------------------------------------------------------------------------
 
+def test_lookup_skips_missing_and_invalid_numbers():
     assert phone_reputation.lookup_phone_number(None)["status"] == "not_provided"
-    assert phone_reputation.lookup_phone_number("not a number")["status"] == (
-        "invalid_number"
-    )
+    assert phone_reputation.lookup_phone_number("not a number")["status"] == "invalid_number"
 
 
-def test_matching_local_and_international_numbers_returns_report_evidence(
-    tmp_path, monkeypatch
-):
-    _write_synthetic_report(tmp_path / "reports.csv")
-    monkeypatch.setattr(phone_reputation, "DATASET_PATH", tmp_path / "reports.csv")
+def test_matching_local_and_international_numbers_returns_report_evidence(mock_db_layer):
+    _seed_report(mock_db_layer)
 
     local_result = phone_reputation.lookup_phone_number("0911234567")
     international_result = phone_reputation.lookup_phone_number("+251911234567")
@@ -90,23 +71,20 @@ def test_matching_local_and_international_numbers_returns_report_evidence(
     assert "do not confirm" in local_result["explanation"]
 
 
-def test_unverified_and_verified_reports_are_distinguished(tmp_path, monkeypatch):
-    dataset = tmp_path / "reports.csv"
-    _write_synthetic_report(dataset, "unverified")
-    monkeypatch.setattr(phone_reputation, "DATASET_PATH", dataset)
+def test_unverified_and_verified_reports_are_distinguished(mock_db_layer):
+    _seed_report(mock_db_layer, "unverified")
     assert "unverified community reports" in phone_reputation.lookup_phone_number(
         "+251911234567"
     )["explanation"]
 
-    _write_synthetic_report(dataset, "verified")
+    _seed_report(mock_db_layer, "verified")
     assert "not proof" in phone_reputation.lookup_phone_number("+251911234567")[
         "explanation"
     ]
 
 
-def test_unlisted_number_is_not_described_as_safe(tmp_path, monkeypatch):
-    _write_synthetic_report(tmp_path / "reports.csv")
-    monkeypatch.setattr(phone_reputation, "DATASET_PATH", tmp_path / "reports.csv")
+def test_unlisted_number_is_not_described_as_safe(mock_db_layer):
+    _seed_report(mock_db_layer)
 
     result = phone_reputation.lookup_phone_number("0911234568")
 
@@ -114,11 +92,8 @@ def test_unlisted_number_is_not_described_as_safe(tmp_path, monkeypatch):
     assert "does not establish" in result["explanation"]
 
 
-def test_source_and_phone_reputation_do_not_change_text_risk_score(
-    tmp_path, monkeypatch
-):
-    _write_synthetic_report(tmp_path / "reports.csv")
-    monkeypatch.setattr(phone_reputation, "DATASET_PATH", tmp_path / "reports.csv")
+def test_source_and_phone_reputation_do_not_change_text_risk_score(mock_db_layer):
+    _seed_report(mock_db_layer)
     message = "Let's meet at the university library this afternoon."
 
     ordinary = analyze_message(message)
@@ -154,7 +129,6 @@ def test_backward_compatible_analysis_defaults_to_text_without_context():
 
 # ── verify_sender_identity ────────────────────────────────────────────────────
 
-
 def test_sender_identity_match_for_known_shortcode():
     result = phone_reputation.verify_sender_identity("994", "994")
     assert result["status"] == "match"
@@ -187,7 +161,6 @@ def test_sender_identity_skipped_when_no_claimed_identity():
 
 
 def test_sender_identity_mismatch_escalates_risk_score():
-    # A benign message from a mismatched sender should be escalated to SUSPICIOUS
     result = analyze_message(
         "Your account is active.",
         sender_phone="0911234567",
@@ -210,7 +183,6 @@ def test_sender_identity_match_does_not_inflate_risk():
 
 
 # ── extract_phone_numbers_from_text ──────────────────────────────────────────
-
 
 def test_extract_phone_numbers_finds_local_format():
     numbers = phone_reputation.extract_phone_numbers_from_text(
@@ -241,9 +213,8 @@ def test_extract_phone_numbers_returns_empty_for_no_numbers():
     assert numbers == []
 
 
-def test_numbers_in_message_included_in_analysis_response(tmp_path, monkeypatch):
-    _write_synthetic_report(tmp_path / "reports.csv")
-    monkeypatch.setattr(phone_reputation, "DATASET_PATH", tmp_path / "reports.csv")
+def test_numbers_in_message_included_in_analysis_response(mock_db_layer):
+    _seed_report(mock_db_layer)
 
     result = analyze_message(
         "Suspicious message. Call back: 0911234567.",
@@ -252,3 +223,35 @@ def test_numbers_in_message_included_in_analysis_response(tmp_path, monkeypatch)
         entry["phone_number"] == "+251911234567"
         for entry in result["numbers_in_message"]
     )
+
+
+# ── Database configuration and SSL tests ─────────────────────────────────────
+
+def test_database_url_missing_raises_runtime_error(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="DATABASE_URL environment variable is not set"):
+        db._get_database_url()
+
+
+def test_database_url_enforces_sslmode(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@ep-test.neon.tech/neondb")
+    url = db._get_database_url()
+    assert "sslmode=require" in url
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@ep-test.neon.tech/neondb?sslmode=verify-full")
+    url2 = db._get_database_url()
+    assert "sslmode=verify-full" in url2
+    assert url2.count("sslmode=") == 1
+
+
+def test_init_db_raises_on_missing_database_url(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="DATABASE_URL environment variable is not set"):
+        db.init_db()
+
+
+def test_get_connection_raises_when_pool_uninitialised(monkeypatch):
+    monkeypatch.setattr(db, "_pool", None)
+    with pytest.raises(RuntimeError, match="database connection pool is not initialised"):
+        with db._original_get_connection():
+            pass

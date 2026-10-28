@@ -15,6 +15,7 @@ For a comprehensive breakdown of the project design, please review the documenta
 
 - **[Research Question](./docs/research-question.md)** — Core objectives and the significance of bilingual threat detection.
 - **[Architecture](./docs/architecture.md)** — High-level system design bridging the Flutter mobile frontend and FastAPI backend.
+- **[Database Guide](./docs/database.md)** — Neon PostgreSQL schema, concurrency-safe upserts, migrations, and deployment.
 - **[Threat Model](./docs/threat-model.md)** — Security analysis covering social engineering vectors and lookalike domains.
 - **[ML Evaluation Report](./docs/ML_EVALUATION_REPORT.md)** — Model performance metrics and testing validation.
 - **[Roadmap](./docs/roadmap.md)** — Project development milestones.
@@ -44,13 +45,21 @@ For a comprehensive breakdown of the project design, please review the documenta
    python ml/train_pipeline.py
    ```
 
-5. Start the backend:
+5. Configure database connection:
+
+   Set the `DATABASE_URL` environment variable pointing to your Neon PostgreSQL instance:
+   ```bash
+   export DATABASE_URL="postgresql://user:password@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require"
+   ```
+   *(Note: Automated tests run with an isolated in-memory mock and do not require a live database).*
+
+6. Start the backend:
 
    ```bash
    uvicorn backend.app.main:app --reload
    ```
 
-6. Send a request to the analysis endpoint:
+7. Send a request to the analysis endpoint:
 
    ```bash
    curl -X POST http://127.0.0.1:8000/analyze \
@@ -61,16 +70,17 @@ For a comprehensive breakdown of the project design, please review the documenta
 ## 🔍 Key Features
 
 - **Screenshot OCR analysis** — Upload a PNG/JPEG screenshot; the backend extracts text via Tesseract, runs full risk analysis, and returns phone numbers found in the image with reputation lookups.
-- **Phone number reputation** — Check any Ethiopian phone number against the local community-report dataset.
-- **Report a number** — Submit suspicious numbers with categories and evidence notes.
+- **Phone number reputation** — Check any Ethiopian phone number against the PostgreSQL community-report dataset.
+- **Report a number** — Submit suspicious numbers with categories and evidence notes, safely upserted into Neon PostgreSQL.
 - **Sender identity verification** — Detects mismatches between the actual sender and a claimed official identity (e.g. a message claiming to be from Ethio Telecom shortcode 994 but arriving from a different number).
 - **Multilingual support** — English, Amharic, and code-switched (Amharic-English) message analysis.
 
 ## Repository Structure
 
-- `backend/` — FastAPI application, API schemas, OCR, and phone reputation modules
+- `backend/` — FastAPI application, API schemas, OCR, database integration, and phone reputation modules
+- `migrations/` — SQL migration scripts (`001_initial_schema.sql`)
 - `detection/` — Security rules, URL analysis, and risk scoring engine
 - `ml/` — Preprocessing, training, validation, and evaluation scripts
 - `dataset/` — Raw and processed message datasets
 - `mobile/` — Flutter demo app (Android/iOS/Web)
-- `docs/` — Architecture and project planning documents
+- `docs/` — Architecture, database guide, and project planning documents

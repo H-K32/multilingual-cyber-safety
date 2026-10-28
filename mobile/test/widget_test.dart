@@ -9,7 +9,7 @@ void main() {
       (WidgetTester tester) async {
     await tester.pumpWidget(const CyberSafetyApp());
     expect(find.text('Cyber-Safety Assistant'), findsOneWidget);
-    expect(find.text('Choose screenshot or image'), findsOneWidget);
+    expect(find.text('Analyze a screenshot'), findsOneWidget);
     expect(find.text('Sender phone number (optional)'), findsOneWidget);
     expect(find.text('Where did this come from? (optional)'), findsOneWidget);
     expect(find.text('Check a number'), findsOneWidget);

@@ -1,0 +1,408 @@
+TECHNICAL AUDIT REPORT
+Multilingual Cyber-Safety Assistant
+====================================
+Date: 2025-07-14
+
+
+================================================================================
+A. SCREENSHOT OCR: CURRENT IMPLEMENTATION
+================================================================================
+
+CODE PATH FOR SCREENSHOT ANALYSIS
+----------------------------------
+1. Flutter (_pickAndAnalyzeImage in main.dart) picks an image, validates magic
+   bytes, and sends a multipart/form-data POST to $apiBaseUrl/analyze/image
+   with a 90-second Flutter-side timeout.
+
+2. main.py -> analyze_image() reads up to 5 MB + 1 byte, rejects oversized
+   files, then calls extract_text_from_image(image_bytes, content_type).
+
+3. image_ocr.py -> extract_text_from_image():
+   - Validates content type, size, and pixel count
+   - Opens the image with Pillow, calls source.verify(), then re-opens and
+     converts to RGB
+   - Downscales to 1500px long edge using LANCZOS if the image is larger
+   - Reads OCR_TIMEOUT_SECONDS from the environment (default "55")
+   - Calls pytesseract.image_to_string(image, lang="eng", config="--psm 6",
+     timeout=OCR_TIMEOUT)
+   - On RuntimeError (pytesseract's timeout signal), raises OCRProcessingError
+     with the message: "OCR timed out on the server. The image may be too large
+     or complex. Try cropping to just the message text and uploading again."
+
+4. Back in main.py, OCRProcessingError is caught and returned as HTTP 422.
+   Flutter reads body['detail'] and displays it as _imageError.
+
+5. main.py then calls extract_phone_numbers_from_text and
+   analyze_message(..., input_method="image_ocr") on the extracted text and
+   returns the full payload.
+
+DOCKERFILE - TESSERACT INSTALLATION (CONFIRMED)
+------------------------------------------------
+Only tesseract-ocr and tesseract-ocr-eng are installed.
+No Amharic language pack (tesseract-ocr-amh) is present.
+
+TIMEOUT VALUES AND WHERE THEY ARE ENFORCED
+-------------------------------------------
+- pytesseract timeout: int(os.environ.get("OCR_TIMEOUT_SECONDS", "55"))
+  Enforced inside image_ocr.py via the timeout= argument to
+  pytesseract.image_to_string(). This is the only server-side timeout.
+
+- Flutter HTTP timeout: Duration(seconds: 90) on request.send().
+  Enforced client-side.
+
+- Render platform: Free-tier instances spin down after 15 minutes of
+  inactivity and take 30-60 seconds to cold-start. This cold-start time is
+  consumed before the request reaches Python code.
+
+
+================================================================================
+B. SCREENSHOT OCR: ROOT CAUSE AND RECOMMENDED FIX
+================================================================================
+
+CONFIRMED vs. HYPOTHESISED FINDINGS
+-------------------------------------
+  CONFIRMED   pytesseract timeout is set to 55s (code)
+  CONFIRMED   Image is downscaled to 1500px before OCR (code)
+  CONFIRMED   Flutter timeout is 90s (code)
+  CONFIRMED   Tesseract is installed in the Docker image (Dockerfile)
+  CONFIRMED   Render free tier cold-starts take 30-60s (Render documentation)
+  HYPOTHESIS  The 55s pytesseract timeout fires *after* cold-start delay
+              (plausible but not confirmed without Render logs)
+  UNCONFIRMED Render has a platform-level HTTP timeout shorter than 90s
+              (Render does not publish a hard limit for web services)
+
+MOST LIKELY ROOT CAUSE
+-----------------------
+The Render free-tier instance is cold when the request arrives. The cold-start
+consumes 30-60 seconds. The remaining time budget for pytesseract is then less
+than 55 seconds, and OCR on even a modest image can exceed it. The RuntimeError
+from pytesseract is caught and returned as HTTP 422 with the timeout message.
+
+SECONDARY CONTRIBUTING FACTOR
+-------------------------------
+pytesseract.image_to_string(..., timeout=N) on Linux uses subprocess with a
+SIGALRM-based timeout. On some environments (particularly if the process is
+already under load), signal delivery can be delayed, making the effective
+timeout slightly shorter than configured.
+
+WHAT IS NOT THE CAUSE
+----------------------
+The Dockerfile correctly installs Tesseract and the English language pack. The
+OCREngineUnavailableError / HTTP 503 path is not being triggered, which means
+Tesseract is found and running. The error message seen ("Text extraction timed
+out") maps exactly to the RuntimeError branch in image_ocr.py.
+
+RECOMMENDED MINIMAL FIXES
+--------------------------
+1. Deployment config (no code change required)
+   Add a keep-alive ping (e.g. UptimeRobot free tier) to
+   https://dagu-1tlr.onrender.com/ every 14 minutes to prevent cold starts.
+
+2. backend/app/image_ocr.py
+   Consider reducing MAX_OCR_LONG_EDGE from 1500 to 1000 or 800, or make it
+   configurable via an OCR_MAX_LONG_EDGE environment variable. This reduces
+   Tesseract CPU time without meaningfully degrading text recognition for
+   typical SMS screenshots.
+
+3. Render environment variables
+   Set OCR_TIMEOUT_SECONDS=45. The current default of 55 may leave insufficient
+   headroom after a cold start. Tune based on actual Render logs.
+
+4. mobile/lib/main.dart
+   The Flutter timeout error message is already correct. No change needed.
+
+HOW TO TEST LOCALLY
+--------------------
+  # Simulate a slow machine by limiting CPU (Linux only)
+  cpulimit -l 25 -- uvicorn backend.app.main:app --reload
+
+  # Then upload a screenshot via curl
+  curl -X POST http://127.0.0.1:8000/analyze/image \
+    -F "file=@screenshot.png;type=image/png"
+
+HOW TO TEST AFTER DEPLOYMENT
+------------------------------
+- Check Render's Logs tab immediately after uploading a screenshot. Look for
+  the pytesseract subprocess start time vs. the RuntimeError timestamp.
+- If the log shows a gap of >50s before the error, cold-start is confirmed.
+- If the error fires in <10s, the image itself is the problem (too large or
+  complex even after downscaling).
+
+
+================================================================================
+C. PHONE REPORTING: CURRENT IMPLEMENTATION
+================================================================================
+
+END-TO-END FLOW
+----------------
+Flutter ReportNumberScreen
+  -> POST /report  {phone_number, categories, evidence_note}
+  -> main.py report_number()
+      -> submit_report(phone, categories, evidence_note)  [phone_reputation.py]
+          -> normalize_phone_number()  [validates, converts to E.164]
+          -> _read_reported_numbers()  [reads entire CSV into memory]
+          -> if number exists: _rewrite_dataset()  [full CSV rewrite]
+          -> if new: DATASET_PATH.open("a")  [appends one row]
+  <- {status: "submitted"|"updated"|"invalid_number"|"invalid_categories"}
+
+Flutter CheckNumberScreen
+  -> POST /check-number  {phone_number}
+  -> main.py check_number()
+      -> lookup_phone_number(phone)  [phone_reputation.py]
+          -> normalize_phone_number()
+          -> _read_reported_numbers()  [reads entire CSV into memory]
+          -> returns report dict or no_reports_found
+  <- {status, explanation, report_count, categories, ...}
+
+WHAT IS CURRENTLY PERSISTED
+-----------------------------
+- A single CSV file at backend/data/reported_phone_numbers.csv
+  (hardcoded path relative to phone_reputation.py).
+- The file is committed to Git. Currently it contains only the header row.
+- Each row: phone_number, country_code, report_count, categories
+  (pipe-separated), source, first_reported, last_reported,
+  verification_status, evidence_note.
+
+WHAT IS NOT PERSISTED
+----------------------
+- Nothing is stored in memory between requests. Every lookup re-reads the
+  entire CSV from disk.
+- There is no database, no cache, no queue.
+
+CONCURRENCY AND SAFETY ISSUES (CONFIRMED FROM CODE)
+-----------------------------------------------------
+1. No file locking.
+   submit_report does a read-then-write with no lock. Two simultaneous POST
+   /report requests for the same number will both read the same state, both
+   decide the number is new, and both append a row - creating a duplicate that
+   will cause _read_reported_numbers() to raise ValueError on the next read,
+   breaking all lookups until the CSV is manually repaired.
+
+2. Full CSV rewrite on update.
+   _rewrite_dataset() reads the entire file into memory, then overwrites it.
+   On Render's free tier with a large CSV, this is slow and not atomic - a
+   crash mid-write corrupts the file.
+
+3. Ephemeral filesystem on Render.
+   Render free-tier web services use an ephemeral filesystem. Any CSV writes
+   are lost on every deploy or restart. Community reports submitted by users
+   will silently disappear. The initial CSV (with the header row) is baked
+   into the Docker image at build time, so lookups still work after a restart,
+   but all user-submitted reports are gone.
+
+4. No rate limiting or abuse prevention.
+   Any client can submit unlimited reports for any number.
+
+DATA VALIDATION (CONFIRMED WORKING)
+-------------------------------------
+- normalize_phone_number() validates Ethiopian mobile numbers (07x/09x local,
+  +251 international, 00251 prefix). Non-Ethiopian numbers are rejected.
+- ALLOWED_CATEGORIES enforces a fixed set of 6 categories.
+- Evidence notes are truncated to 500 characters and newlines are stripped.
+- Dates are validated as ISO format.
+
+EXISTING TESTS
+---------------
+55 tests total. The report/check tests use tmp_path + monkeypatch to redirect
+DATASET_PATH to a temp file, so they are isolated and do not touch the real
+CSV. All tests pass.
+
+
+================================================================================
+D. NEON READINESS ASSESSMENT
+================================================================================
+
+VERDICT: PARTIALLY READY
+
+  Component                                  Status
+  -----------------------------------------  --------------------------------
+  Data model (fields, validation, normalize) Ready - can be reused as-is
+  Business logic (submit, lookup, verify)    Ready - logic is clean and tested
+  Storage layer (CSV read/write)             Needs replacement
+  Schema (no ORM, no migrations)             Not present - needs to be added
+  PostgreSQL driver                          Not in requirements.txt
+  Connection pooling                         Not present
+  Environment-variable config for DB         Not present
+  Tests                                      Need updating for DB backend
+  Flutter                                    No changes needed
+
+WHAT CAN BE REUSED WITHOUT MODIFICATION
+-----------------------------------------
+- normalize_phone_number()          pure function, no I/O
+- verify_sender_identity()          pure function, no I/O
+- extract_phone_numbers_from_text() pure function, no I/O
+- KNOWN_OFFICIAL_SENDERS, ALLOWED_CATEGORIES  constants
+- All of analyzer.py, schemas.py, main.py endpoint signatures
+- All existing tests (with adapter pattern to mock DB layer)
+
+WHAT NEEDS MODIFICATION
+------------------------
+- _read_reported_numbers()    replace with a DB SELECT
+- submit_report()             replace file append/rewrite with INSERT/UPDATE
+- _rewrite_dataset()          delete entirely
+- lookup_phone_number()       replace _read_reported_numbers().get() with query
+- requirements.txt            add psycopg[binary]>=3.1
+- Dockerfile                  no change needed
+
+
+================================================================================
+E. RECOMMENDED DATABASE DESIGN
+================================================================================
+
+TABLE: phone_reports
+---------------------
+  CREATE TABLE phone_reports (
+      id              SERIAL PRIMARY KEY,
+      phone_e164      TEXT        NOT NULL UNIQUE,
+      country_code    TEXT        NOT NULL,
+      report_count    INTEGER     NOT NULL DEFAULT 1 CHECK (report_count >= 1),
+      categories      TEXT[]      NOT NULL,
+      source          TEXT        NOT NULL DEFAULT 'community submission',
+      first_reported  DATE        NOT NULL,
+      last_reported   DATE        NOT NULL,
+      verification_status TEXT    NOT NULL DEFAULT 'unverified'
+                          CHECK (verification_status IN ('verified','unverified')),
+      evidence_note   TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+
+  CREATE INDEX idx_phone_reports_phone ON phone_reports (phone_e164);
+
+NOTES
+------
+- phone_e164 UNIQUE replaces the duplicate-detection logic in
+  _read_reported_numbers().
+- categories TEXT[] replaces the pipe-separated string.
+- created_at/updated_at are audit fields not currently in the CSV schema.
+- A per-submission audit log can be added later if needed.
+
+UPSERT PATTERN (replaces submit_report file logic)
+---------------------------------------------------
+  INSERT INTO phone_reports
+      (phone_e164, country_code, categories, first_reported, last_reported,
+       evidence_note)
+  VALUES ($1, $2, $3, CURRENT_DATE, CURRENT_DATE, $4)
+  ON CONFLICT (phone_e164) DO UPDATE SET
+      report_count  = phone_reports.report_count + 1,
+      categories    = (SELECT array_agg(DISTINCT c)
+                       FROM unnest(phone_reports.categories ||
+                                   EXCLUDED.categories) c),
+      last_reported = CURRENT_DATE,
+      evidence_note = COALESCE(EXCLUDED.evidence_note,
+                               phone_reports.evidence_note),
+      updated_at    = now();
+
+
+================================================================================
+F. IMPLEMENTATION PLAN
+================================================================================
+
+Step 1 - Add the PostgreSQL driver to requirements.txt
+  Add: psycopg[binary]>=3.1
+  This is the only new dependency.
+
+Step 2 - Add DATABASE_URL environment variable
+  - In Render: add DATABASE_URL = your Neon connection string
+    (e.g. postgresql://user:pass@ep-xxx.neon.tech/dbname?sslmode=require)
+    in the Render environment variables panel. Never commit this to Git.
+  - In local .env (gitignored): same variable for local development.
+  - In phone_reputation.py: read with os.environ.get("DATABASE_URL").
+    If None, fall back to CSV (preserves local dev without a DB).
+
+Step 3 - Create the schema on Neon
+  Run the CREATE TABLE DDL above once via the Neon SQL editor or a one-time
+  migration script. A migrations/ directory with numbered SQL files is
+  recommended for future changes.
+
+Step 4 - Replace the three CSV I/O functions in phone_reputation.py
+  Replace _read_reported_numbers(), the append block in submit_report(), and
+  _rewrite_dataset() with psycopg3 calls. Function signatures of
+  lookup_phone_number() and submit_report() stay identical - no changes to
+  main.py, analyzer.py, or Flutter.
+
+Step 5 - Migrate existing CSV data
+  The current CSV has only a header row (no real data). Run a one-time INSERT
+  for any records you want to seed. If the CSV had real data, a migration
+  script reading the CSV and inserting rows would be needed.
+
+Step 6 - Update tests
+  Options (simplest first):
+  a) Keep the CSV fallback path active in tests by not setting DATABASE_URL
+     in the test environment.
+  b) Use dependency injection and mock the DB connection in tests.
+  c) Use a Neon branch as a test database.
+
+
+================================================================================
+G. TESTING CHECKLIST
+================================================================================
+
+OCR TIMEOUT
+------------
+[ ] Upload a real screenshot to the deployed Render URL and check Render logs
+    for the timestamp gap between request arrival and the timeout error.
+[ ] Confirm OCR_TIMEOUT_SECONDS is set in Render environment variables.
+[ ] Test with a small crop (< 500px) to confirm OCR succeeds on a warm instance.
+[ ] Test immediately after a cold start (wait 15+ minutes, then upload) to
+    reproduce the timeout.
+
+PHONE REPORTING - PERSISTENCE
+-------------------------------
+[ ] Submit a report via the Flutter app on the deployed backend.
+[ ] Trigger a Render redeploy (or wait for a restart).
+[ ] Check the same number - confirm the report is still present.
+    (This will FAIL with CSV, confirming the ephemeral filesystem problem.)
+[ ] After DB migration: repeat the above - report must survive restart.
+
+PHONE REPORTING - CORRECTNESS
+-------------------------------
+[ ] Submit two reports for the same number simultaneously - confirm no
+    duplicate row and report_count is correct.
+[ ] Submit a report with an invalid number - confirm HTTP 400.
+[ ] Submit a report with no categories - confirm HTTP 400.
+[ ] Check a number with no reports - confirm status: no_reports_found.
+[ ] Check a number after submitting a report - confirm status: reported
+    with correct report_count and categories.
+
+PHONE REPORTING - ABUSE
+------------------------
+[ ] Submit 100 reports for the same number in a loop - confirm the system
+    handles it. (Currently no rate limiting; this is a known gap.)
+
+
+================================================================================
+FINAL VERDICT
+================================================================================
+
+SCREENSHOT OCR ROOT CAUSE
+---------------------------
+Not yet fully confirmed from code alone. The code is correctly structured
+(downscaling, 55s timeout, proper error handling). The most probable cause is
+Render free-tier cold-start consuming 30-60s of the 55s pytesseract budget,
+but this requires Render log inspection to confirm.
+
+PHONE REPORTING NEON READINESS
+--------------------------------
+Partially ready. The business logic and data model are clean and reusable.
+Only the three CSV I/O functions need replacement. The function signatures are
+stable, so no changes propagate to main.py, analyzer.py, or Flutter.
+
+FIRST THREE RECOMMENDED ACTIONS
+---------------------------------
+1. Check Render logs for the OCR endpoint.
+   Look at the timestamp gap between request arrival and the timeout error.
+   This takes 5 minutes and will confirm or rule out cold-start as the cause
+   before writing any code.
+
+2. Add a keep-alive ping (e.g. UptimeRobot free tier pinging
+   https://dagu-1tlr.onrender.com/ every 14 minutes) to prevent cold starts.
+   This is zero-code and can be done today.
+
+3. Add psycopg[binary]>=3.1 to requirements.txt and create the phone_reports
+   table on Neon. This unblocks the DB migration and is the prerequisite for
+   all subsequent phone-reporting work.
+
+================================================================================
+END OF REPORT
+================================================================================

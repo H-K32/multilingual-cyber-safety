@@ -168,24 +168,23 @@ def test_request_content_and_sender_number_are_not_logged(caplog):
 
 
 def test_image_endpoint_extracts_and_looks_up_phone_numbers_in_ocr_text(
-    monkeypatch, tmp_path
+    monkeypatch,
 ):
-    import csv
+    from contextlib import contextmanager
     from backend.app import phone_reputation
 
-    dataset = tmp_path / "r.csv"
-    with dataset.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=[
-                "phone_number", "country_code", "report_count", "categories",
-                "source", "first_reported", "last_reported",
-                "verification_status", "evidence_note",
-            ],
-        )
-        writer.writeheader()
+    # Empty in-memory summary — no reports on file.
+    @contextmanager
+    def fake_get_connection():
+        class _C:
+            def execute(self, sql, params=()):
+                class _R:
+                    def fetchone(self): return None
+                return _R()
+            def commit(self): pass
+        yield _C()
 
-    monkeypatch.setattr(phone_reputation, "DATASET_PATH", dataset)
+    monkeypatch.setattr(phone_reputation, "get_connection", fake_get_connection)
     monkeypatch.setattr(
         main,
         "extract_text_from_image",

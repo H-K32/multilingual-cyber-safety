@@ -1,4 +1,4 @@
-﻿fastapi>=0.111.0
+fastapi>=0.111.0
 uvicorn>=0.30.0
 pydantic>=2.7.0
 pandas>=2.2.0
@@ -11,3 +11,5 @@ pillow>=10.0.0
 pytesseract>=0.3.10
 python-multipart>=0.0.9
 phonenumbers>=8.13.0
+psycopg[binary]>=3.1.0
+psycopg-pool>=3.1.0

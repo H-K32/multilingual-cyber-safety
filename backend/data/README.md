@@ -1,13 +1,16 @@
-# Local phone reputation dataset
+# Local phone reputation dataset (Legacy / Import Source)
 
-`reported_phone_numbers.csv` is the local, opt-in lookup source. It intentionally
-contains only a header and **no phone reports**; no real or synthetic reports
-have been invented.
+> **Notice:** The production data store for phone reputation is **Neon PostgreSQL**
+> using the `phone_report_submissions` and `phone_number_summary` tables.
+> The CSV file in this directory is preserved only as a documented legacy format
+> and optional seed/import source.
 
-Add one record per number only when the report is properly sourced and its use
-is permitted. The lookup normalizes valid international numbers to E.164 before
-matching, including Ethiopian local `09…` / `07…` numbers and their `+251…`
-equivalents.
+`reported_phone_numbers.csv` intentionally contains only a header and **no real phone reports**.
+
+To import legacy records from this CSV into Neon PostgreSQL, run:
+```bash
+python -m backend.app.import_legacy_csv
+```
 
 CSV columns:
 
@@ -23,6 +26,4 @@ CSV columns:
 | `evidence_note` | Short, non-sensitive evidence summary; omit private message contents. |
 
 Supported categories include `scam`, `spam_calls`, `phishing`, `impersonation`,
-and `unwanted_marketing`. The app does not scrape or import third-party lists.
-Community reports are not proof that a number is malicious; no local match is
-not evidence that a number is safe.
+and `unwanted_marketing`.

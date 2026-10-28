@@ -68,6 +68,20 @@ def extract_text_from_image(image_bytes: bytes, content_type: str) -> str:
     except Image.DecompressionBombWarning as error:
         raise InvalidImageError("The image dimensions exceed the supported limit.") from error
 
+    # Downscale large images before OCR to reduce processing time on hosted
+    # servers (e.g. Render free tier).  Tesseract works well at 1500 px on the
+    # long edge; going larger only adds latency without improving accuracy for
+    # typical screenshot text.
+    MAX_OCR_LONG_EDGE = 1500
+    w, h = image.size
+    long_edge = max(w, h)
+    if long_edge > MAX_OCR_LONG_EDGE:
+        scale = MAX_OCR_LONG_EDGE / long_edge
+        image = image.resize(
+            (int(w * scale), int(h * scale)),
+            Image.Resampling.LANCZOS,
+        )
+
     try:
         import pytesseract
     except ImportError as error:
@@ -75,12 +89,16 @@ def extract_text_from_image(image_bytes: bytes, content_type: str) -> str:
             "OCR dependencies are unavailable on the server."
         ) from error
 
+    # Use a generous timeout for hosted environments (Render free tier is slow
+    # on cold starts).  pytesseract raises RuntimeError on timeout.
+    OCR_TIMEOUT = int(os.environ.get("OCR_TIMEOUT_SECONDS", "55"))
+
     try:
         text = pytesseract.image_to_string(
             image,
             lang="eng",
             config="--psm 6",
-            timeout=20,
+            timeout=OCR_TIMEOUT,
         ).strip()
     except pytesseract.TesseractNotFoundError as error:
         raise OCREngineUnavailableError(
@@ -90,7 +108,8 @@ def extract_text_from_image(image_bytes: bytes, content_type: str) -> str:
         raise OCRProcessingError("The server could not read text from this image.") from error
     except RuntimeError as error:
         raise OCRProcessingError(
-            "Text extraction timed out. Try a smaller or clearer image."
+            "OCR timed out on the server. The image may be too large or complex. "
+            "Try cropping to just the message text and uploading again."
         ) from error
 
     if not text:
