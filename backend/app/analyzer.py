@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 import joblib
+import numpy as np
 
 from ml.preprocessing.text_cleaner import preprocess_message
 from ml.preprocessing.language_detector import UnicodeLanguageDetector
@@ -13,6 +14,7 @@ from detection.risk_engine.risk_engine import (
     calculate_risk,
     classify_risk,
     determine_threat_type,
+    calculate_detailed_risk_breakdown,
     THREAT_DESCRIPTIONS,
 )
 from backend.app.phone_reputation import (
@@ -103,6 +105,11 @@ def analyze_message(
             if hasattr(ml_pipeline, "predict_proba"):
                 probs = ml_pipeline.predict_proba([cleaned_text])[0]
                 ml_prob = float(max(probs))
+            elif hasattr(ml_pipeline, "decision_function"):
+                scores = ml_pipeline.decision_function([cleaned_text])[0]
+                exp_scores = np.exp(scores - np.max(scores))
+                probs = exp_scores / np.sum(exp_scores)
+                ml_prob = float(max(probs))
         except Exception:
             ml_pred = None
             ml_prob = 0.0
@@ -111,40 +118,29 @@ def analyze_message(
     security_indicators = detect_indicators(message)
     urls, url_indicators = analyze_urls(message)
 
-    # Preserve unique indicator list ordering
-    indicators = list(dict.fromkeys(security_indicators + url_indicators))
-
-    # 4. Composite Risk Engine Scoring
-    rule_score = calculate_risk(indicators)
-    ml_score = int(ml_prob * 40) if ml_pred in ["PHISHING", "SCAM", 1] else 0
-
-    # Combined composite score bounded to 100
-    risk_score = min(rule_score + ml_score, 100)
-
-    # High-severity override for direct credential harvesting vectors
-    if ("credential_request" in indicators or "otp_request" in indicators) and (
-        "lookalike_domain" in indicators or "ip_address_url" in indicators
-    ):
-        risk_score = max(risk_score, 85)
-
-    classification = classify_risk(risk_score)
-
-    # 5. ML Escalation: Escalate SAFE to SUSPICIOUS if ML detects threat intent
-    if ml_pred in ["PHISHING", "SCAM"] and classification == "SAFE":
-        classification = "SUSPICIOUS"
-        risk_score = max(risk_score, 45)
-
-    # 6. Sender identity verification
+    # Sender identity verification against known official senders
     sender_verification = verify_sender_identity(sender_phone, claimed_sender)
+    sender_mismatch = bool(sender_verification.get("risk_indicator"))
 
-    # Escalate risk when sender identity mismatch is detected
-    if sender_verification.get("risk_indicator"):
-        risk_score = max(risk_score, 55)
-        if classification == "SAFE":
-            classification = "SUSPICIOUS"
-        indicators = list(dict.fromkeys(indicators + ["sender_identity_mismatch"]))
+    # Preserve unique indicator list ordering
+    all_indicators = security_indicators + url_indicators
+    if sender_mismatch:
+        all_indicators.append("sender_identity_mismatch")
+    indicators = list(dict.fromkeys(all_indicators))
 
-    # 7. Phone reputation lookups
+    # 4. Transparent Composite Risk Engine Scoring & Breakdown
+    breakdown = calculate_detailed_risk_breakdown(
+        security_indicators=security_indicators,
+        url_indicators=url_indicators,
+        ml_pred=ml_pred,
+        ml_prob=ml_prob,
+        sender_mismatch=sender_mismatch,
+        urls=urls,
+    )
+    risk_score = breakdown["final_risk_score"]
+    classification = breakdown["classification"]
+
+    # 5. Phone reputation lookups
     try:
         phone_reputation = lookup_phone_number(sender_phone)
     except RuntimeError:
@@ -196,15 +192,16 @@ def analyze_message(
             if ml_pred is not None
             else "; no ML prediction was used for this message."
         )
-        + " Results are indicators, not proof of malicious intent. "
+        + " Results are heuristic threat indicators, not proof of malicious intent. "
+        + "The risk score is a deterministic composite index, not a statistically calibrated probability. "
         + (
             "No matching phone reports do not establish that a number is safe."
             if phone_reputation["status"] == "no_reports_found"
             else ""
         )
         + (
-            " Screenshot OCR used local English-only text recognition; extracted text "
-            "may contain recognition errors, and Amharic OCR is not enabled."
+            " Screenshot OCR uses bilingual Amharic and English recognition; review "
+            "the editable text for recognition errors."
             if input_method == "image_ocr"
             else ""
         )
@@ -230,6 +227,7 @@ def analyze_message(
         "phone_reputation": phone_reputation,
         "numbers_in_message": numbers_in_message,
         "sender_verification": sender_verification,
+        "risk_breakdown": breakdown,
         "explanations": {
             "message": text_explanation,
             "urls": url_explanation,
@@ -242,8 +240,8 @@ def analyze_message(
                 else "No message source was provided."
             ),
             "ocr": (
-                "Text was extracted from an image using local English-only OCR; review "
-                "the editable text for recognition errors. Amharic OCR is not enabled."
+                "Text was extracted from an image using bilingual Amharic and English OCR; "
+                "review the editable text for recognition errors."
                 if input_method == "image_ocr"
                 else ""
             ),

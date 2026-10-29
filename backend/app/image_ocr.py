@@ -33,6 +33,31 @@ class OCRProcessingError(RuntimeError):
     pass
 
 
+def get_available_ocr_languages() -> set[str]:
+    """Inspect local Tesseract installation and return set of installed language codes."""
+    try:
+        import pytesseract
+        return set(pytesseract.get_languages())
+    except Exception:
+        return set()
+
+
+def determine_ocr_language_config() -> tuple[str, list[str]]:
+    """Determine the optimal Tesseract lang parameter and list of active languages.
+
+    Returns:
+        (lang_param, active_languages_list)
+        e.g. ("amh+eng", ["amh", "eng"]) or ("eng", ["eng"])
+    """
+    langs = get_available_ocr_languages()
+    if "amh" in langs and "eng" in langs:
+        return "amh+eng", ["amh", "eng"]
+    elif "amh" in langs:
+        return "amh", ["amh"]
+    else:
+        return "eng", ["eng"]
+
+
 def extract_text_from_image(image_bytes: bytes, content_type: str) -> str:
     if content_type not in ALLOWED_IMAGE_CONTENT_TYPES:
         raise InvalidImageError("Only PNG and JPEG images are supported.")
@@ -93,13 +118,27 @@ def extract_text_from_image(image_bytes: bytes, content_type: str) -> str:
     # on cold starts).  pytesseract raises RuntimeError on timeout.
     OCR_TIMEOUT = int(os.environ.get("OCR_TIMEOUT_SECONDS", "55"))
 
+    lang_param, _ = determine_ocr_language_config()
+
     try:
-        text = pytesseract.image_to_string(
-            image,
-            lang="eng",
-            config="--psm 6",
-            timeout=OCR_TIMEOUT,
-        ).strip()
+        try:
+            text = pytesseract.image_to_string(
+                image,
+                lang=lang_param,
+                config="--psm 6",
+                timeout=OCR_TIMEOUT,
+            ).strip()
+        except pytesseract.TesseractError:
+            # If bilingual OCR fails (e.g. missing amh traineddata), fall back safely to eng
+            if lang_param != "eng":
+                text = pytesseract.image_to_string(
+                    image,
+                    lang="eng",
+                    config="--psm 6",
+                    timeout=OCR_TIMEOUT,
+                ).strip()
+            else:
+                raise
     except pytesseract.TesseractNotFoundError as error:
         raise OCREngineUnavailableError(
             "The server OCR engine is not installed or configured."
@@ -113,7 +152,7 @@ def extract_text_from_image(image_bytes: bytes, content_type: str) -> str:
         ) from error
 
     if not text:
-        raise OCRProcessingError("No readable English text was found in the image.")
+        raise OCRProcessingError("No readable text was found in the image.")
     if len(text) > 5000:
         raise OCRProcessingError(
             "The image contains more than 5000 characters. Upload a smaller crop."

@@ -54,8 +54,14 @@ INDICATOR_SCORES = {
     "financial_request": 25,
     "possible_impersonation": 20,
     "account_verification_request": 15,
+    "suspicious_call_to_action": 15,
     "job_scam_indicator": 20,
     "delivery_scam_indicator": 20,
+    "investment_scam_indicator": 20,
+    "fake_account_suspension_warning": 25,
+    "credential_theft_attempt": 30,
+    "advance_fee_scam_indicator": 25,
+    "sender_identity_mismatch": 25,
     
     # URL Intelligence Signals
     "url_shortener": 15,
@@ -68,6 +74,35 @@ INDICATOR_SCORES = {
     "credential_path": 20,
     "lookalike_domain": 30,
     "punycode_or_unicode": 15,
+}
+
+INDICATOR_DESCRIPTIONS = {
+    "urgency": "Urgency and time-pressure phrasing demanding immediate action",
+    "fear_or_threat": "Intimidation or threat language (account suspension, legal action)",
+    "reward_bait": "Prize, lottery, or windfall claim lure",
+    "financial_reward": "Promise of unexpected financial payout or gift",
+    "credential_request": "Explicit request for PIN, OTP, password, or verification passcode",
+    "financial_request": "Direct request for fund transfer, fee deposit, or airtime recharge",
+    "possible_impersonation": "Message references official organization brand without authorization",
+    "account_verification_request": "Prompt to verify or unlock restricted account credentials",
+    "suspicious_call_to_action": "High-pressure call to action requesting immediate reply or interaction",
+    "job_scam_indicator": "Recruitment lure requesting registration fees or personal data",
+    "delivery_scam_indicator": "Parcel delivery notice requesting fee payment or tracking link click",
+    "investment_scam_indicator": "High-yield investment lure promising unrealistic returns",
+    "fake_account_suspension_warning": "Coordinated brand impersonation threatening account deactivation",
+    "credential_theft_attempt": "Brand impersonation explicitly soliciting secret credentials",
+    "advance_fee_scam_indicator": "Reward lure combined with upfront processing fee demand",
+    "sender_identity_mismatch": "Sender phone/identifier does not match legitimate organization origin",
+    "url_shortener": "URL shortener hiding destination target domain",
+    "ip_address_url": "Direct IP address used instead of domain name",
+    "excessive_subdomains": "Abnormal number of subdomain levels used for domain masking",
+    "url_contains_at_symbol": "Embedded @ character used for URL credential spoofing",
+    "no_https": "Insecure HTTP connection lacking transport layer encryption",
+    "malformed_url": "Malformed or unparseable URL structure",
+    "suspicious_tld": "High-risk or disposable top-level domain frequently abused in fraud",
+    "credential_path": "URL path containing login, verify, auth, or credential keywords",
+    "lookalike_domain": "Lookalike domain impersonating official banking or telecom provider",
+    "punycode_or_unicode": "Punycode or non-ASCII characters in hostname used for visual deception",
 }
 
 
@@ -137,13 +172,112 @@ def determine_threat_type(indicators: List[str], message: str = "") -> str:
     return "BENIGN"
 
 
+def calculate_detailed_risk_breakdown(
+    security_indicators: List[str],
+    url_indicators: List[str],
+    ml_pred: Any = None,
+    ml_prob: float = 0.0,
+    sender_mismatch: bool = False,
+    urls: List[str] | None = None,
+) -> Dict[str, Any]:
+    """Calculate structured, transparent breakdown of risk score contributors.
+
+    Clearly distinguishes heuristic scoring weights from calibrated probabilities.
+    """
+    rule_pts = sum(INDICATOR_SCORES.get(i, 0) for i in security_indicators)
+    url_pts = sum(INDICATOR_SCORES.get(i, 0) for i in url_indicators)
+    sender_pts = INDICATOR_SCORES.get("sender_identity_mismatch", 25) if sender_mismatch else 0
+
+    ml_score = int(ml_prob * 40) if ml_pred in ["PHISHING", "SCAM", 1] else 0
+
+    base_score = min(rule_pts + url_pts + sender_pts + ml_score, 100)
+    final_score = base_score
+
+    overrides = []
+    all_indicators = set(security_indicators + url_indicators)
+    if sender_mismatch:
+        all_indicators.add("sender_identity_mismatch")
+
+    # Critical credential vector override
+    if ("credential_request" in all_indicators or "otp_request" in all_indicators) and (
+        "lookalike_domain" in all_indicators or "ip_address_url" in all_indicators
+    ):
+        final_score = max(final_score, 85)
+        overrides.append("critical_credential_harvesting_override")
+
+    classification = classify_risk(final_score)
+    ml_escalated = False
+    if ml_pred in ["PHISHING", "SCAM"] and classification == "SAFE":
+        classification = "SUSPICIOUS"
+        final_score = max(final_score, 45)
+        ml_escalated = True
+        overrides.append("ml_intent_escalation")
+
+    if sender_mismatch:
+        final_score = max(final_score, 55)
+        if classification == "SAFE":
+            classification = "SUSPICIOUS"
+        overrides.append("sender_identity_mismatch_escalation")
+
+    triggered_rules = [
+        {
+            "indicator": ind,
+            "category": "message_rule",
+            "points": INDICATOR_SCORES.get(ind, 0),
+            "description": INDICATOR_DESCRIPTIONS.get(ind, ind),
+        }
+        for ind in security_indicators
+    ]
+    if sender_mismatch:
+        triggered_rules.append({
+            "indicator": "sender_identity_mismatch",
+            "category": "sender_verification",
+            "points": sender_pts,
+            "description": INDICATOR_DESCRIPTIONS.get("sender_identity_mismatch", "Sender identity mismatch"),
+        })
+
+    suspicious_url_indicators = [
+        {
+            "indicator": ind,
+            "category": "url_indicator",
+            "points": INDICATOR_SCORES.get(ind, 0),
+            "description": INDICATOR_DESCRIPTIONS.get(ind, ind),
+        }
+        for ind in url_indicators
+    ]
+
+    return {
+        "final_risk_score": final_score,
+        "classification": classification,
+        "rule_score": min(rule_pts + sender_pts, 100),
+        "url_score": min(url_pts, 100),
+        "ml_score": ml_score,
+        "triggered_rules": triggered_rules,
+        "url_indicators": suspicious_url_indicators,
+        "urls_detected": urls or [],
+        "ml_contribution": {
+            "prediction": str(ml_pred) if ml_pred is not None else None,
+            "confidence": round(float(ml_prob), 4) if ml_pred is not None else 0.0,
+            "points": ml_score,
+            "is_active": ml_pred is not None,
+            "escalated_risk": ml_escalated,
+        },
+        "overrides_applied": overrides,
+        "is_statistically_calibrated": False,
+        "calibration_notice": (
+            "The risk score (0-100) is a deterministic heuristic threat index synthesized "
+            "from expert security rules, URL intelligence, and ML pattern matching. "
+            "It is not an empirical Bayesian posterior probability."
+        ),
+    }
+
+
 def evaluate_message_security(
     indicators: List[str],
     ml_probability: float = 0.0,
     message: str = ""
 ) -> Dict[str, Any]:
-    """
-    Main Risk Engine evaluation API combining indicators, ML probability,
+    """Main Risk Engine evaluation API combining indicators, ML probability,
     threat mapping, and explanation generation.
     """
     rule_score = calculate_risk(indicators)
@@ -153,7 +287,9 @@ def evaluate_message_security(
     total_score = min(rule_score + ml_score, 100)
 
     # High-severity override for critical vector combinations
-    if ("credential_request" in indicators or "otp_request" in indicators) and ("lookalike_domain" in indicators or "ip_address_url" in indicators):
+    if ("credential_request" in indicators or "otp_request" in indicators) and (
+        "lookalike_domain" in indicators or "ip_address_url" in indicators
+    ):
         total_score = max(total_score, 85)
 
     classification = classify_risk(total_score)

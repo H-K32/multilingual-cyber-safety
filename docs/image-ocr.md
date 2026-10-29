@@ -1,4 +1,4 @@
-# Screenshot analysis and OCR
+# Screenshot Analysis and OCR
 
 The Flutter client accepts PNG and JPEG images up to 5 MB, in the browser and
 on Android, using the same FastAPI backend as text analysis. Image bytes are
@@ -7,14 +7,38 @@ sent to an external service. The resulting text is shown in the editable
 message field and goes through the existing `/analyze` pipeline after the user
 reviews it.
 
-OCR uses the local Tesseract executable with the `eng` language data only. It
-supports English text when Tesseract and its English trained data are installed
-on the backend host. Amharic OCR is **not supported or verified**: the Amharic
-trained data is not bundled, and it must not be assumed to exist on a host.
-Install Tesseract for the backend operating system and ensure `eng` is available
-on `TESSDATA_PREFIX` before enabling screenshot OCR. If the runtime is missing,
-the endpoint returns a clear service-unavailable response; pasted-text analysis
-continues to work.
+## Bilingual OCR: Amharic and English (`amh+eng`)
+
+OCR is powered by Tesseract with bilingual language support for both **Amharic (`amh`)**
+and **English (`eng`)**:
+
+- In the production container (`Dockerfile`), both `tesseract-ocr-eng` and `tesseract-ocr-amh`
+  are installed via apt.
+- The OCR pipeline dynamically detects available language packs via `pytesseract.get_languages()`.
+  When both language models are available, it runs with `lang="amh+eng"`.
+- If `amh` trained data is missing or corrupted at runtime, the engine catches `TesseractError`
+  and safely falls back to `lang="eng"`.
+- If no readable text is detected in the image, a clean 422 error is returned:
+  `"No readable text was found in the image."`
+
+## Local Development vs Production Docker
+
+### Production & Containerized Deployments
+In Docker or Linux hosts:
+```dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-amh \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+### Local Windows Development
+On Windows development machines without Tesseract binaries or Amharic trained data:
+- Unit tests in `backend/tests/test_image_analysis.py` use isolated monkeypatching and mocks to verify language configuration, dynamic fallback, and error handling without requiring a local Tesseract installation.
+- If Tesseract is installed locally at `C:\Program Files\Tesseract-OCR\tesseract.exe`, pytesseract automatically configures its path. To test Amharic locally, download `amh.traineddata` from the Tesseract tessdata repository into your local `tessdata/` directory.
+
+## Running Backend and Frontend
 
 Run the backend from the repository root with:
 

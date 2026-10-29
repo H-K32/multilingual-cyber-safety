@@ -217,3 +217,97 @@ def test_image_endpoint_analysis_uses_image_ocr_input_method(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["analysis"]["input_method"] == "image_ocr"
+
+
+
+# ---------------------------------------------------------------------------
+# Multilingual Amharic & English OCR Tests (Phase 2)
+# ---------------------------------------------------------------------------
+
+def test_ocr_language_configuration_detection(monkeypatch):
+    from backend.app import image_ocr
+
+    # Case 1: Both Amharic and English available
+    monkeypatch.setattr(image_ocr, "get_available_ocr_languages", lambda: {"amh", "eng", "osd"})
+    lang_param, active_list = image_ocr.determine_ocr_language_config()
+    assert lang_param == "amh+eng"
+    assert active_list == ["amh", "eng"]
+
+    # Case 2: Only Amharic available
+    monkeypatch.setattr(image_ocr, "get_available_ocr_languages", lambda: {"amh", "osd"})
+    lang_param, active_list = image_ocr.determine_ocr_language_config()
+    assert lang_param == "amh"
+    assert active_list == ["amh"]
+
+    # Case 3: Only English available
+    monkeypatch.setattr(image_ocr, "get_available_ocr_languages", lambda: {"eng", "osd"})
+    lang_param, active_list = image_ocr.determine_ocr_language_config()
+    assert lang_param == "eng"
+    assert active_list == ["eng"]
+
+    # Case 4: Neither available (e.g. clean fallback)
+    monkeypatch.setattr(image_ocr, "get_available_ocr_languages", lambda: set())
+    lang_param, active_list = image_ocr.determine_ocr_language_config()
+    assert lang_param == "eng"
+    assert active_list == ["eng"]
+
+
+def test_ocr_bilingual_fallback_to_english_on_tesseract_error(monkeypatch):
+    import pytesseract
+    from backend.app import image_ocr
+
+    # Simulate both languages configured
+    monkeypatch.setattr(image_ocr, "determine_ocr_language_config", lambda: ("amh+eng", ["amh", "eng"]))
+
+    calls = []
+
+    def mock_image_to_string(image, lang=None, config=None, timeout=None):
+        calls.append(lang)
+        if lang == "amh+eng":
+            # Simulate missing or corrupted traineddata error from Tesseract
+            raise pytesseract.TesseractError(1, "Error opening data file /usr/share/tesseract-ocr/tessdata/amh.traineddata")
+        return "English fallback text"
+
+    monkeypatch.setattr(pytesseract, "image_to_string", mock_image_to_string)
+
+    result = image_ocr.extract_text_from_image(_png_bytes(), "image/png")
+    assert result == "English fallback text"
+    # First tried amh+eng, then fell back safely to eng
+    assert calls == ["amh+eng", "eng"]
+
+
+def test_ocr_empty_text_error_message(monkeypatch):
+    import pytesseract
+    from backend.app import image_ocr
+
+    monkeypatch.setattr(pytesseract, "image_to_string", lambda *args, **kwargs: "   \n\t  ")
+
+    with pytest.raises(image_ocr.OCRProcessingError) as exc_info:
+        image_ocr.extract_text_from_image(_png_bytes(), "image/png")
+
+    assert str(exc_info.value) == "No readable text was found in the image."
+
+
+def test_image_endpoint_returns_configured_ocr_languages(monkeypatch):
+    from backend.app import main
+
+    monkeypatch.setattr(
+        main,
+        "determine_ocr_language_config",
+        lambda: ("amh+eng", ["amh", "eng"]),
+    )
+    monkeypatch.setattr(
+        main,
+        "extract_text_from_image",
+        lambda *args: "ይህ የማረጋገጫ መልእክት ነው",
+    )
+
+    response = client.post(
+        "/analyze/image",
+        files={"file": ("msg.png", _png_bytes(), "image/png")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["extracted_text"] == "ይህ የማረጋገጫ መልእክት ነው"
+    assert payload["ocr_engine"] == "Tesseract"
+    assert payload["ocr_languages"] == ["amh", "eng"]

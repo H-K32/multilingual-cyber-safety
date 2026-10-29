@@ -10,6 +10,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import confusion_matrix
 
 from ml.preprocessing.text_cleaner import preprocess_message
@@ -55,7 +56,8 @@ def train_and_save_pipeline(csv_path: str):
 
     models = {
         "Logistic_Regression": LogisticRegression(class_weight='balanced', random_state=42),
-        "Linear_SVM": LinearSVC(class_weight='balanced', random_state=42)
+        "Linear_SVM": LinearSVC(class_weight='balanced', random_state=42),
+        "Calibrated_Linear_SVM": CalibratedClassifierCV(LinearSVC(class_weight='balanced', random_state=42), cv=3),
     }
 
     print("=== DATASET ===")

@@ -41,11 +41,18 @@ CREATE TABLE IF NOT EXISTS phone_report_submissions (
     source              TEXT        NOT NULL DEFAULT 'community submission',
     verification_status TEXT        NOT NULL DEFAULT 'unverified'
                             CHECK (verification_status IN ('verified', 'unverified')),
-    submitted_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    submitted_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    reporter_hash       TEXT
 );
+
+ALTER TABLE phone_report_submissions
+    ADD COLUMN IF NOT EXISTS reporter_hash TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_submissions_phone
     ON phone_report_submissions (phone_e164);
+
+CREATE INDEX IF NOT EXISTS idx_submissions_reporter
+    ON phone_report_submissions (phone_e164, reporter_hash, submitted_at);
 
 CREATE TABLE IF NOT EXISTS phone_number_summary (
     phone_e164          TEXT        PRIMARY KEY,
@@ -61,6 +68,53 @@ CREATE TABLE IF NOT EXISTS phone_number_summary (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS phone_number_disputes (
+    id                  SERIAL PRIMARY KEY,
+    phone_e164          TEXT        NOT NULL,
+    country_code        TEXT        NOT NULL,
+    explanation         TEXT        NOT NULL,
+    contact_info        TEXT,
+    review_status       TEXT        NOT NULL DEFAULT 'pending'
+                            CHECK (review_status IN ('pending', 'under_review', 'resolved', 'rejected')),
+    reporter_hash       TEXT,
+    submitted_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_disputes_phone
+    ON phone_number_disputes (phone_e164);
+
+CREATE INDEX IF NOT EXISTS idx_disputes_status
+    ON phone_number_disputes (review_status, submitted_at);
+
+CREATE TABLE IF NOT EXISTS security_feed_events (
+    event_id                TEXT        PRIMARY KEY,
+    event_type              TEXT        NOT NULL
+                            CHECK (event_type IN ('reputation_spike', 'high_report_volume', 'cross_category_threat', 'disputed_threat')),
+    priority                TEXT        NOT NULL
+                            CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+    phone_e164              TEXT        NOT NULL,
+    country_code            TEXT        NOT NULL,
+    report_count            INTEGER     NOT NULL DEFAULT 1,
+    categories              TEXT[]      NOT NULL DEFAULT '{}',
+    recent_reports_24h      INTEGER     NOT NULL DEFAULT 0,
+    reason                  TEXT        NOT NULL,
+    evidence_source         TEXT        NOT NULL,
+    confidence_qualification TEXT       NOT NULL,
+    review_status           TEXT        NOT NULL DEFAULT 'new'
+                            CHECK (review_status IN ('new', 'acknowledged', 'under_review', 'resolved', 'dismissed')),
+    acknowledged_by         TEXT,
+    acknowledged_at         TIMESTAMPTZ,
+    notes                   TEXT,
+    first_detected          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_updated            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feed_events_type ON security_feed_events (event_type);
+CREATE INDEX IF NOT EXISTS idx_feed_events_priority ON security_feed_events (priority);
+CREATE INDEX IF NOT EXISTS idx_feed_events_status ON security_feed_events (review_status);
+CREATE INDEX IF NOT EXISTS idx_feed_events_updated ON security_feed_events (last_updated DESC);
+CREATE INDEX IF NOT EXISTS idx_feed_events_phone ON security_feed_events (phone_e164);
 """
 
 

@@ -1,4 +1,6 @@
 # backend/app/phone_reputation.py
+import hashlib
+import os
 import re
 from datetime import date
 from typing import List
@@ -288,10 +290,24 @@ def lookup_phone_number(value: str | None) -> dict:
     }
 
 
+def compute_reporter_hash(reporter_id: str | None) -> str | None:
+    """Generate a salted cryptographic SHA-256 hash of the reporter ID.
+
+    Uses a server-side salt (from DAGU_HASH_SALT or internal default) to protect
+    client IP addresses against offline rainbow-table deanonymization attacks.
+    """
+    if not reporter_id or not str(reporter_id).strip():
+        return None
+    salt = os.environ.get("DAGU_HASH_SALT", "dagu_default_secure_salt_v1")
+    payload = f"{salt}:{reporter_id.strip()}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def submit_report(
     phone: str,
     categories: List[str],
     evidence_note: str,
+    reporter_id: str | None = None,
 ) -> dict:
     """Record a community report in PostgreSQL.
 
@@ -300,7 +316,9 @@ def submit_report(
     submissions for the same number are handled safely by the ON CONFLICT
     clause — no application-level read-modify-write race condition.
 
-    Signature and return format are identical to the previous CSV version.
+    If reporter_id is provided, duplicate submissions from the same reporter
+    within a 24-hour window update categories without inflating the report count.
+
     All submitted reports are stored as unverified.
     """
     normalized, country_code = normalize_phone_number(phone)
@@ -324,22 +342,63 @@ def submit_report(
     # Truncate evidence note to 500 chars; strip newlines.
     safe_note = evidence_note.replace("\n", " ").replace("\r", " ")[:500].strip() or None
 
+    reporter_hash = compute_reporter_hash(reporter_id)
+
     try:
         with get_connection() as conn:
+            # Check for duplicate submission from this reporter within 24 hours
+            if reporter_hash:
+                dup_row = conn.execute(
+                    """
+                    SELECT id FROM phone_report_submissions
+                    WHERE phone_e164 = %s
+                      AND reporter_hash = %s
+                      AND submitted_at >= (now() - INTERVAL '24 hours')
+                    LIMIT 1
+                    """,
+                    (normalized, reporter_hash),
+                ).fetchone()
+
+                if dup_row is not None:
+                    # Do not increment report count; merge any new categories
+                    conn.execute(
+                        """
+                        UPDATE phone_number_summary SET
+                            categories    = (
+                                SELECT array_agg(DISTINCT c ORDER BY c)
+                                FROM unnest(
+                                    phone_number_summary.categories ||
+                                    %s::TEXT[]
+                                ) AS c
+                            ),
+                            last_reported = CURRENT_DATE,
+                            evidence_note = COALESCE(%s, phone_number_summary.evidence_note),
+                            updated_at    = now()
+                        WHERE phone_e164 = %s
+                        """,
+                        (clean_cats, safe_note, normalized),
+                    )
+                    conn.commit()
+                    return {
+                        "status": "already_reported",
+                        "explanation": (
+                            f"A report for this number was already recorded from your client within the last 24 hours. "
+                            "The report count was not incremented to prevent duplicate inflation."
+                        ),
+                    }
+
             # 1. Record the individual submission.
             conn.execute(
                 """
                 INSERT INTO phone_report_submissions
                     (phone_e164, country_code, categories, evidence_note,
-                     source, verification_status)
-                VALUES (%s, %s, %s, %s, 'community submission', 'unverified')
+                     source, verification_status, reporter_hash)
+                VALUES (%s, %s, %s, %s, 'community submission', 'unverified', %s)
                 """,
-                (normalized, country_code or "", clean_cats, safe_note),
+                (normalized, country_code or "", clean_cats, safe_note, reporter_hash),
             )
 
             # 2. Upsert the summary row.
-            #    ON CONFLICT handles concurrent inserts for the same number
-            #    without a separate SELECT first.
             result = conn.execute(
                 """
                 INSERT INTO phone_number_summary
@@ -395,3 +454,331 @@ def submit_report(
         raise RuntimeError(
             "The phone reputation database is temporarily unavailable."
         )
+
+
+def mask_phone_number(phone_e164: str) -> str:
+    """Mask phone number to protect reporter and community privacy.
+
+    Examples:
+    +251911234567 -> +251 9XX XXX XXX
+    +251711234567 -> +251 7XX XXX XXX
+    """
+    if not phone_e164 or not phone_e164.strip():
+        return ""
+    cleaned = phone_e164.strip()
+    if cleaned.startswith("+251") and len(cleaned) == 13:
+        op = cleaned[4]  # '9' or '7'
+        return f"+251 {op}XX XXX XXX"
+    if cleaned.startswith("+"):
+        prefix = cleaned[:4]
+        return f"{prefix} XXX XXX"
+    return "XXXX XXX XXX"
+
+
+def derive_risk_status(
+    report_count: int,
+    verification_status: str,
+    categories: list[str],
+) -> tuple[str, str]:
+    """Derive human-readable risk status and machine token based on real reports.
+
+    Returns (risk_level, risk_status):
+    - ("High Risk", "HIGH_RISK")
+    - ("Suspicious", "SUSPICIOUS")
+    - ("Reported", "REPORTED")
+    """
+    if verification_status == "verified" or report_count >= 10:
+        return "High Risk", "HIGH_RISK"
+    elif report_count >= 3 or any(
+        c in {"scam", "phishing", "impersonation"} for c in categories
+    ):
+        return "Suspicious", "SUSPICIOUS"
+    else:
+        return "Reported", "REPORTED"
+
+
+def get_reported_numbers(
+    limit: int = 20,
+    offset: int = 0,
+    query: str | None = None,
+) -> dict:
+    """Fetch distinct reported numbers from phone_number_summary.
+
+    Only public fields are returned (phone number masked for privacy, report count,
+    categories, verification status, dates). Private notes and sources are excluded.
+    Ordered by highest report count first.
+    """
+    safe_limit = max(1, min(limit, 100))
+    safe_offset = max(0, offset)
+    clean_query = query.strip() if query and query.strip() else None
+
+    # Handle local leading 0 for Ethiopian phone searches (e.g. "0911" -> "911")
+    search_alt = clean_query[1:] if clean_query and clean_query.startswith("0") and len(clean_query) > 1 else clean_query
+
+    try:
+        with get_connection() as conn:
+            if clean_query:
+                param_pattern = f"%{clean_query}%"
+                param_alt = f"%{search_alt}%"
+                count_sql = """
+                    SELECT count(*)
+                    FROM phone_number_summary
+                    WHERE phone_e164 ILIKE %s OR phone_e164 ILIKE %s OR categories::text ILIKE %s
+                """
+                total = conn.execute(count_sql, (param_pattern, param_alt, param_pattern)).fetchone()[0]
+
+                data_sql = """
+                    SELECT phone_e164, country_code, report_count, categories,
+                           first_reported, last_reported, verification_status
+                    FROM phone_number_summary
+                    WHERE phone_e164 ILIKE %s OR phone_e164 ILIKE %s OR categories::text ILIKE %s
+                    ORDER BY report_count DESC, last_reported DESC, phone_e164 ASC
+                    LIMIT %s OFFSET %s
+                """
+                rows = conn.execute(
+                    data_sql, (param_pattern, param_alt, param_pattern, safe_limit, safe_offset)
+                ).fetchall()
+            else:
+                count_sql = "SELECT count(*) FROM phone_number_summary"
+                total = conn.execute(count_sql).fetchone()[0]
+
+                data_sql = """
+                    SELECT phone_e164, country_code, report_count, categories,
+                           first_reported, last_reported, verification_status
+                    FROM phone_number_summary
+                    ORDER BY report_count DESC, last_reported DESC, phone_e164 ASC
+                    LIMIT %s OFFSET %s
+                """
+                rows = conn.execute(data_sql, (safe_limit, safe_offset)).fetchall()
+
+    except Exception:
+        raise RuntimeError("The phone reputation database is temporarily unavailable.")
+
+    items = []
+    for row in rows:
+        (
+            phone_e164,
+            country_code,
+            report_count,
+            categories,
+            first_reported,
+            last_reported,
+            verification_status,
+        ) = row
+
+        cats = list(categories) if categories else []
+        risk_level, risk_status = derive_risk_status(
+            report_count, verification_status, cats
+        )
+        first_rep_str = (
+            first_reported.isoformat()
+            if hasattr(first_reported, "isoformat")
+            else (str(first_reported) if first_reported else None)
+        )
+        last_rep_str = (
+            last_reported.isoformat()
+            if hasattr(last_reported, "isoformat")
+            else (str(last_reported) if last_reported else None)
+        )
+
+        items.append({
+            "phone_number": phone_e164,
+            "masked_phone": mask_phone_number(phone_e164),
+            "country_code": country_code,
+            "report_count": report_count,
+            "categories": cats,
+            "risk_level": risk_level,
+            "risk_status": risk_status,
+            "verification_status": verification_status,
+            "first_reported": first_rep_str,
+            "last_reported": last_rep_str,
+        })
+
+    return {
+        "total": total,
+        "limit": safe_limit,
+        "offset": safe_offset,
+        "has_more": (safe_offset + len(items)) < total,
+        "items": items,
+    }
+
+
+def submit_dispute(
+    phone: str,
+    explanation: str,
+    contact_info: str | None = None,
+    reporter_id: str | None = None,
+) -> dict:
+    """Record a dispute against a phone number's reputation in PostgreSQL.
+
+    Disputes allow legitimate owners or users to contest inaccurate status
+    (e.g. recycled numbers, telecom spoofing victims, official numbers).
+
+    Submitting a dispute queues the record for administrative review.
+    CRITICAL: It DOES NOT automatically delete community reports, reset
+    report counts, or mark the number safe. Existing community reports remain
+    visible to protect users until the dispute is reviewed.
+
+    Personal contact information and explanation text are stored exclusively in
+    the phone_number_disputes table and are NEVER exposed via public lookup
+    endpoints (such as /check-number or /reported-numbers) or application logs.
+    """
+    normalized, country_code = normalize_phone_number(phone)
+    if normalized is None:
+        return {
+            "status": "invalid_number",
+            "explanation": "The supplied phone number could not be validated.",
+        }
+
+    clean_explanation = explanation.strip() if explanation else ""
+    if len(clean_explanation) < 10 or len(clean_explanation) > 1000:
+        return {
+            "status": "invalid_explanation",
+            "explanation": "Explanation must be between 10 and 1000 characters.",
+        }
+
+    clean_contact = (
+        contact_info.strip()[:254]
+        if contact_info and str(contact_info).strip()
+        else None
+    )
+
+    reporter_hash = compute_reporter_hash(reporter_id)
+
+    try:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO phone_number_disputes
+                    (phone_e164, country_code, explanation, contact_info,
+                     review_status, reporter_hash)
+                VALUES (%s, %s, %s, %s, 'pending', %s)
+                """,
+                (
+                    normalized,
+                    country_code or "",
+                    clean_explanation,
+                    clean_contact,
+                    reporter_hash,
+                ),
+            )
+            conn.commit()
+
+        return {
+            "status": "dispute_recorded",
+            "phone_number": normalized,
+            "review_status": "pending",
+            "explanation": (
+                "Your dispute has been recorded and queued for moderation review. "
+                "Existing community reports remain visible until the dispute is reviewed."
+            ),
+        }
+    except Exception:
+        raise RuntimeError(
+            "The phone reputation database is temporarily unavailable."
+        )
+
+
+def get_disputes(
+    limit: int = 20,
+    offset: int = 0,
+    review_status: str | None = None,
+) -> dict:
+    """List disputes with pagination and optional status filter (admin/analyst use only)."""
+    safe_limit = max(1, min(limit, 100))
+    safe_offset = max(0, offset)
+
+    where_clauses = []
+    params: list = []
+    if review_status and review_status.strip():
+        where_clauses.append("review_status = %s")
+        params.append(review_status.strip().lower())
+
+    where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+    try:
+        with get_connection() as conn:
+            count_cur = conn.execute(
+                f"SELECT count(*) FROM phone_number_disputes {where_sql}",
+                tuple(params),
+            )
+            count_row = count_cur.fetchone() if count_cur else None
+            total = count_row[0] if count_row else 0
+
+            cur = conn.execute(
+                f"""
+                SELECT id, phone_e164, country_code, explanation, contact_info,
+                       review_status, submitted_at
+                FROM phone_number_disputes
+                {where_sql}
+                ORDER BY submitted_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                tuple(params + [safe_limit, safe_offset]),
+            )
+            rows = cur.fetchall() or []
+
+            items = []
+            for r in rows:
+                items.append({
+                    "id": r[0],
+                    "phone_number": r[1],
+                    "country_code": r[2],
+                    "explanation": r[3],
+                    "contact_info": r[4],
+                    "review_status": r[5],
+                    "submitted_at": r[6].isoformat() if hasattr(r[6], "isoformat") else str(r[6]),
+                })
+
+            return {
+                "total": total,
+                "limit": safe_limit,
+                "offset": safe_offset,
+                "has_more": (safe_offset + len(items)) < total,
+                "items": items,
+            }
+    except Exception:
+        raise RuntimeError(
+            "The phone reputation database is temporarily unavailable."
+        )
+
+
+def update_dispute_status(
+    dispute_id: int,
+    new_status: str,
+) -> dict:
+    """Update review status of a dispute ('pending', 'under_review', 'resolved', 'rejected')."""
+    valid_statuses = {"pending", "under_review", "resolved", "rejected"}
+    clean_status = new_status.strip().lower() if new_status else ""
+    if clean_status not in valid_statuses:
+        raise ValueError(
+            f"Invalid review_status '{new_status}'. Allowed: {', '.join(sorted(valid_statuses))}."
+        )
+
+    try:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                UPDATE phone_number_disputes
+                SET review_status = %s
+                WHERE id = %s
+                RETURNING id, phone_e164, review_status
+                """,
+                (clean_status, dispute_id),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise KeyError(f"Dispute with ID {dispute_id} not found.")
+            conn.commit()
+            return {
+                "id": row[0],
+                "phone_number": row[1],
+                "review_status": row[2],
+            }
+    except (KeyError, ValueError):
+        raise
+    except Exception:
+        raise RuntimeError(
+            "The phone reputation database is temporarily unavailable."
+        )
+
