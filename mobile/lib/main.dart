@@ -2251,6 +2251,17 @@ class _DisputeModalSheetState extends State<_DisputeModalSheet> {
 }
 
 
+String _formatDisplayPhone(String raw) {
+  final clean = raw.replaceAll(' ', '').trim();
+  if (clean.startsWith('+251') && clean.length == 13) {
+    return '${clean.substring(0, 4)} ${clean.substring(4, 6)} ${clean.substring(6, 9)} ${clean.substring(9)}';
+  }
+  if (clean.startsWith('09') && clean.length == 10) {
+    return '${clean.substring(0, 4)} ${clean.substring(4, 7)} ${clean.substring(7)}';
+  }
+  return raw;
+}
+
 class _ReportedNumberCard extends StatelessWidget {
   final Map<String, dynamic> item;
   final AppLanguage language;
@@ -2267,7 +2278,10 @@ class _ReportedNumberCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maskedPhone = item['masked_phone'] as String? ?? 'Unknown';
+    final rawPhone = (item['phone_number'] as String?)?.trim();
+    final displayPhone = (rawPhone != null && rawPhone.isNotEmpty)
+        ? _formatDisplayPhone(rawPhone)
+        : (item['masked_phone'] as String? ?? 'Unknown');
     final reportCount = item['report_count'] as int? ?? 1;
     final riskLevel = (item['risk_level'] as String? ?? 'REPORTED').toUpperCase();
     final riskStatus = item['risk_status'] as String? ?? 'Reported';
@@ -2312,7 +2326,7 @@ class _ReportedNumberCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top Row: Masked phone number + Status badge
+              // Top Row: Display phone number + Status badge
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -2321,7 +2335,7 @@ class _ReportedNumberCard extends StatelessWidget {
                       Icon(Icons.phone_android, size: 20, color: statusColor),
                       const SizedBox(width: 8),
                       Text(
-                        maskedPhone,
+                        displayPhone,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -2967,7 +2981,10 @@ class _CheckNumberScreenState extends State<CheckNumberScreen> {
                       item: item,
                       language: widget.language,
                       onTap: () {
-                        // User can tap to inspect or run check
+                        final target = item['phone_number'] as String? ?? '';
+                        if (target.isNotEmpty) {
+                          _check(target);
+                        }
                       },
                     );
                   }),
