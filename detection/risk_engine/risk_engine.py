@@ -1,4 +1,6 @@
+from urllib.parse import urlparse
 from typing import Dict, List, Any
+from detection.url_analysis.url_analyzer import is_verified_domain
 
 # Map specific threat categories to human-friendly explanations and recommendations
 THREAT_DESCRIPTIONS = {
@@ -136,11 +138,11 @@ def determine_threat_type(indicators: List[str], message: str = "") -> str:
     if "credential_request" in indicators:
         return "CREDENTIAL_PHISHING"
 
+    if "reward_bait" in indicators or "financial_reward" in indicators or "advance_fee_scam_indicator" in indicators:
+        return "PRIZE_SCAM"
+
     if "financial_request" in indicators:
         return "FINANCIAL_SCAM"
-
-    if "reward_bait" in indicators or "financial_reward" in indicators:
-        return "PRIZE_SCAM"
 
     if "job_scam_indicator" in indicators:
         return "JOB_SCAM"
@@ -178,6 +180,7 @@ def calculate_detailed_risk_breakdown(
     ml_pred: Any = None,
     ml_prob: float = 0.0,
     sender_mismatch: bool = False,
+    is_known_sender: bool = False,
     urls: List[str] | None = None,
 ) -> Dict[str, Any]:
     """Calculate structured, transparent breakdown of risk score contributors.
@@ -198,26 +201,59 @@ def calculate_detailed_risk_breakdown(
     if sender_mismatch:
         all_indicators.add("sender_identity_mismatch")
 
-    # Critical credential vector override
-    if ("credential_request" in all_indicators or "otp_request" in all_indicators) and (
+    has_credential_theft = bool(
+        "credential_request" in all_indicators
+        or "otp_request" in all_indicators
+        or "credential_theft_attempt" in all_indicators
+    )
+
+    # 1. Critical credential vector override with suspicious link (highest severity)
+    if has_credential_theft and (
         "lookalike_domain" in all_indicators or "ip_address_url" in all_indicators
     ):
         final_score = max(final_score, 85)
         overrides.append("critical_credential_harvesting_override")
-
-    classification = classify_risk(final_score)
-    ml_escalated = False
-    if ml_pred in ["PHISHING", "SCAM"] and classification == "SAFE":
-        classification = "SUSPICIOUS"
-        final_score = max(final_score, 45)
-        ml_escalated = True
-        overrides.append("ml_intent_escalation")
+    elif has_credential_theft:
+        # Critical credential demand override: asking for PIN / OTP / password is HIGH_RISK even from known sender
+        final_score = max(final_score, 75)
+        overrides.append("critical_credential_request_override")
 
     if sender_mismatch:
         final_score = max(final_score, 55)
-        if classification == "SAFE":
-            classification = "SUSPICIOUS"
         overrides.append("sender_identity_mismatch_escalation")
+
+    # Assess whether any suspicious indicators are triggered
+    has_threat_indicators = bool(
+        security_indicators
+        or url_indicators
+        or sender_mismatch
+    )
+
+    # Check if all detected URLs are verified legitimate domains
+    all_urls_verified = bool(urls) and all(
+        is_verified_domain(urlparse(u).hostname) for u in urls
+    )
+
+    ml_escalated = False
+    # Known legitimate sender with NO suspicious threat indicators:
+    # Do not inflate score with uncalibrated ML false positive for normal receipts/notifications!
+    if is_known_sender and not has_threat_indicators:
+        ml_score = 0
+        final_score = 0
+    elif all_urls_verified and not has_threat_indicators:
+        # Verified legitimate domain with no threat indicators:
+        ml_score = 0
+        final_score = 0
+    elif has_threat_indicators and ml_pred in ["PHISHING", "SCAM"] and final_score < 35:
+        final_score = max(final_score, 45)
+        ml_escalated = True
+        overrides.append("ml_intent_escalation")
+    elif not has_threat_indicators and urls:
+        # Unseen clean domain without suspicious indicators:
+        # Maintain unverified status with neutral base score (< 35, SAFE), no ML escalation
+        final_score = min(final_score, 25)
+
+    classification = classify_risk(final_score)
 
     triggered_rules = [
         {
@@ -287,10 +323,13 @@ def evaluate_message_security(
     total_score = min(rule_score + ml_score, 100)
 
     # High-severity override for critical vector combinations
-    if ("credential_request" in indicators or "otp_request" in indicators) and (
+    has_credential_theft = bool("credential_request" in indicators or "otp_request" in indicators or "credential_theft_attempt" in indicators)
+    if has_credential_theft and (
         "lookalike_domain" in indicators or "ip_address_url" in indicators
     ):
         total_score = max(total_score, 85)
+    elif has_credential_theft:
+        total_score = max(total_score, 75)
 
     classification = classify_risk(total_score)
     threat_type = determine_threat_type(indicators, message)

@@ -18,19 +18,24 @@ from backend.app.db import get_connection
 # lower-cased for case-insensitive matching.
 # ---------------------------------------------------------------------------
 KNOWN_OFFICIAL_SENDERS: dict[str, dict] = {
+    "127": {
+        "organisation": "Ethio Telecom / telebirr",
+        "legitimate_ids": {"127", "telebirr", "994", "6969"},
+        "note": "Official Telebirr transaction SMS notification shortcode.",
+    },
     "994": {
         "organisation": "Ethio Telecom",
-        "legitimate_ids": {"994"},
+        "legitimate_ids": {"994", "ethiotelecom", "telebirr", "127"},
         "note": "Ethio Telecom customer service shortcode.",
     },
     "ethiotelecom": {
         "organisation": "Ethio Telecom",
-        "legitimate_ids": {"994", "ethiotelecom"},
+        "legitimate_ids": {"994", "ethiotelecom", "telebirr", "127"},
         "note": "Ethio Telecom branded sender name.",
     },
     "telebirr": {
         "organisation": "Ethio Telecom / telebirr",
-        "legitimate_ids": {"994", "telebirr", "6969"},
+        "legitimate_ids": {"127", "994", "telebirr", "6969"},
         "note": "telebirr mobile wallet service.",
     },
     "cbe": {
@@ -38,7 +43,22 @@ KNOWN_OFFICIAL_SENDERS: dict[str, dict] = {
         "legitimate_ids": {"cbe", "8397", "combanketh"},
         "note": "CBE official shortcodes and sender names.",
     },
+    "8397": {
+        "organisation": "Commercial Bank of Ethiopia",
+        "legitimate_ids": {"cbe", "8397", "combanketh"},
+        "note": "CBE Birr official transaction SMS shortcode.",
+    },
+    "combanketh": {
+        "organisation": "Commercial Bank of Ethiopia",
+        "legitimate_ids": {"cbe", "8397", "combanketh"},
+        "note": "Commercial Bank of Ethiopia branded sender name.",
+    },
     "awash": {
+        "organisation": "Awash Bank",
+        "legitimate_ids": {"awash", "awashbank"},
+        "note": "Awash Bank official sender names.",
+    },
+    "awashbank": {
         "organisation": "Awash Bank",
         "legitimate_ids": {"awash", "awashbank"},
         "note": "Awash Bank official sender names.",
@@ -48,7 +68,87 @@ KNOWN_OFFICIAL_SENDERS: dict[str, dict] = {
         "legitimate_ids": {"dashen", "dashenbank"},
         "note": "Dashen Bank official sender names.",
     },
+    "dashenbank": {
+        "organisation": "Dashen Bank",
+        "legitimate_ids": {"dashen", "dashenbank"},
+        "note": "Dashen Bank official sender names.",
+    },
+    "bankofabyssinia": {
+        "organisation": "Bank of Abyssinia",
+        "legitimate_ids": {"boa", "bankofabyssinia"},
+        "note": "Bank of Abyssinia official sender names.",
+    },
+    "boa": {
+        "organisation": "Bank of Abyssinia",
+        "legitimate_ids": {"boa", "bankofabyssinia"},
+        "note": "Bank of Abyssinia official sender abbreviation.",
+    },
+    "coop": {
+        "organisation": "Cooperative Bank of Oromia",
+        "legitimate_ids": {"coop", "coopbank"},
+        "note": "Cooperative Bank of Oromia sender name.",
+    },
+    "coopbank": {
+        "organisation": "Cooperative Bank of Oromia",
+        "legitimate_ids": {"coop", "coopbank"},
+        "note": "Cooperative Bank of Oromia sender name.",
+    },
 }
+
+
+def get_known_official_senders() -> dict[str, dict]:
+    """Returns the registry of known official senders, merged with any
+    additional senders configured via KNOWN_OFFICIAL_SENDERS_EXTRA.
+    """
+    senders = dict(KNOWN_OFFICIAL_SENDERS)
+    extra_env = os.environ.get("KNOWN_OFFICIAL_SENDERS_EXTRA", "").strip()
+    if extra_env:
+        try:
+            import json
+            extra_data = json.loads(extra_env)
+            if isinstance(extra_data, dict):
+                for k, v in extra_data.items():
+                    if isinstance(v, dict) and "organisation" in v and "legitimate_ids" in v:
+                        v_copy = dict(v)
+                        v_copy["legitimate_ids"] = set(v_copy["legitimate_ids"])
+                        senders[k.lower()] = v_copy
+        except Exception:
+            pass
+    return senders
+
+
+def is_known_official_sender(sender: str | None) -> bool:
+    """Check if the sender identifier or phone number is in the allowlist of known official senders."""
+    if not sender or not sender.strip():
+        return False
+    norm_val = sender.strip().lower()
+    normalised_e164, _ = normalize_phone_number(norm_val)
+    candidates = {norm_val}
+    if normalised_e164:
+        candidates.add(normalised_e164.lower())
+
+    registry = get_known_official_senders()
+    for entry in registry.values():
+        if candidates & entry.get("legitimate_ids", set()):
+            return True
+    return False
+
+
+def get_sender_known_organisation(sender: str | None) -> str | None:
+    """Return the organisation name if the sender is a recognized official sender, else None."""
+    if not sender or not sender.strip():
+        return None
+    norm_val = sender.strip().lower()
+    normalised_e164, _ = normalize_phone_number(norm_val)
+    candidates = {norm_val}
+    if normalised_e164:
+        candidates.add(normalised_e164.lower())
+
+    registry = get_known_official_senders()
+    for entry in registry.values():
+        if candidates & entry.get("legitimate_ids", set()):
+            return entry.get("organisation")
+    return None
 
 # Regex to extract phone-number-like tokens from free text
 _PHONE_TOKEN_PATTERN = re.compile(
@@ -132,37 +232,66 @@ def verify_sender_identity(
         "994", "telebirr", "CBE").  Derived from message content or user input.
 
     Returns a dict with keys:
-        status          – "match" | "mismatch" | "unknown_identity" | "not_checked"
+        status          – "match" | "mismatch" | "unknown_identity" | "known_sender" | "not_checked"
         explanation     – human-readable explanation
         risk_indicator  – bool, True when a mismatch is detected
     """
-    if not actual_sender or not actual_sender.strip():
+    actual_clean = actual_sender.strip() if actual_sender else ""
+    claimed_clean = claimed_identity.strip() if claimed_identity else ""
+
+    if not actual_clean and not claimed_clean:
         return {
             "status": "not_checked",
-            "explanation": "No actual sender was provided; identity verification was skipped.",
-            "risk_indicator": False,
-        }
-    if not claimed_identity or not claimed_identity.strip():
-        return {
-            "status": "not_checked",
-            "explanation": "No claimed identity was provided; identity verification was skipped.",
+            "is_known_sender": False,
+            "explanation": "No actual sender or claimed identity was provided; identity verification was skipped.",
             "risk_indicator": False,
         }
 
-    key = claimed_identity.strip().lower()
-    entry = KNOWN_OFFICIAL_SENDERS.get(key)
-    if entry is None:
+    registry = get_known_official_senders()
+    actual_is_known = is_known_official_sender(actual_clean)
+    actual_org = get_sender_known_organisation(actual_clean)
+
+    if not actual_clean:
         return {
-            "status": "unknown_identity",
+            "status": "not_checked",
+            "is_known_sender": False,
+            "explanation": "No actual sender was provided; identity verification was skipped.",
+            "risk_indicator": False,
+        }
+
+    if not claimed_clean:
+        return {
+            "status": "not_checked",
+            "is_known_sender": actual_is_known,
+            "organisation": actual_org,
             "explanation": (
-                f"'{claimed_identity}' is not in the list of known official senders. "
-                "The claim cannot be verified or refuted."
+                f"No claimed identity was provided; identity verification was skipped."
+                + (f" The sender '{actual_clean}' is a recognised official sender for {actual_org}." if actual_is_known else "")
             ),
             "risk_indicator": False,
         }
 
-    actual_lower = actual_sender.strip().lower()
-    normalised, _ = normalize_phone_number(actual_sender)
+    key = claimed_clean.lower()
+    entry = registry.get(key)
+    if entry is None:
+        for candidate_key, candidate_entry in registry.items():
+            if key in candidate_key or key in candidate_entry["organisation"].lower():
+                entry = candidate_entry
+                break
+
+    if entry is None:
+        return {
+            "status": "unknown_identity",
+            "is_known_sender": actual_is_known,
+            "explanation": (
+                f"'{claimed_identity}' is not in the list of known official senders. "
+                "The claim cannot be verified or refuted with certainty."
+            ),
+            "risk_indicator": False,
+        }
+
+    actual_lower = actual_clean.lower()
+    normalised, _ = normalize_phone_number(actual_clean)
     candidates = {actual_lower}
     if normalised:
         candidates.add(normalised.lower())
@@ -170,9 +299,10 @@ def verify_sender_identity(
     if candidates & entry["legitimate_ids"]:
         return {
             "status": "match",
+            "is_known_sender": True,
             "organisation": entry["organisation"],
             "explanation": (
-                f"The actual sender '{actual_sender}' matches a known legitimate "
+                f"The actual sender '{actual_clean}' matches a known legitimate "
                 f"identifier for {entry['organisation']}."
             ),
             "risk_indicator": False,
@@ -180,11 +310,12 @@ def verify_sender_identity(
 
     return {
         "status": "mismatch",
+        "is_known_sender": actual_is_known,
         "organisation": entry["organisation"],
         "explanation": (
             f"The message claims to be from {entry['organisation']} ({claimed_identity}), "
-            f"but the actual sender '{actual_sender}' is not a recognised identifier for "
-            f"that organisation. This is suspicious but not definitive proof of fraud."
+            f"but the actual sender '{actual_clean}' is not a recognised identifier for "
+            f"that organisation. This is suspicious; treat unverified senders with caution."
         ),
         "risk_indicator": True,
     }
@@ -203,6 +334,17 @@ def lookup_phone_number(value: str | None) -> dict:
         return {
             "status": "not_provided",
             "explanation": "No sender phone number was provided; number lookup was skipped.",
+        }
+
+    # Recognize official shortcodes or sender identifiers directly
+    if is_known_official_sender(value):
+        org = get_sender_known_organisation(value)
+        return {
+            "status": "official_sender",
+            "country_code": "ET",
+            "explanation": f"'{value}' is an official shortcode/identifier registered to {org}.",
+            "report_count": 0,
+            "reputation": "official",
         }
 
     normalized_number, country_code = normalize_phone_number(value)

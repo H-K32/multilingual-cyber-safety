@@ -87,22 +87,29 @@ _CREDENTIAL_PATTERNS: List[str] = [
     r"\b(otp|code|pin|password)\b.*?(ላክልኝ|ላክ|ስጠኝ|አስገባ)",
 ]
 
-# 5. Financial Requests, Transfers & Payment Demands
+# 5. Financial Requests, Transfers & Payment Demands (Active requests only)
 _FINANCIAL_PATTERNS: List[str] = [
-    r"\b(send|transfer|deposit|pay|wire|recharge)\b.*?\b(money|funds|cash|birr|ብር|etb|\$|usd|airtime|balance)\b",
-    r"(ገንዘብ\s*ላክ|ብር\s*ክፈል|ገንዘብ\b.*?\bክፈል|አስገባ|አየር\s*ሰዓት|ካርድ\s*ላክ|ሞላ|ቴሌብር|telebirr)",
-    r"\b(processing\b.*?\bfee|activation\b.*?\bfee|advance\b.*?\bpayment|tax\b.*?\bpayment)\b",
-    r"(የአገልግሎት\s*ክፍያ|የማስኬጃ|ቅድመ\s*ክፍያ|ታክስ\s*ክፈል)",
+    r"\b(please\s+)?(send|wire|recharge)\b.*?\b(\d+[\d,]*\s*)?(money|funds|cash|birr|ብር|etb|\$|usd|airtime)\b",
+    r"\b(transfer|deposit|pay)\s+(\d+[\d,]*\s*)?(money|funds|cash|birr|ብር|etb|\$|usd)\s+(to|for|into)\b",
+    r"\b(must|have\s+to|required\s+to|need\s+to)\s+(pay|send|transfer|deposit)\b",
+    r"\b(processing\b.*?\bfee|activation\b.*?\bfee|advance\b.*?\bpayment|tax\b.*?\bpayment|clearance\b.*?\bfee|registration\b.*?\bfee)\b",
+    r"(ገንዘብ\s*ላክ|ብር\s*ላክ|ገንዘብ\s*ክፈል|ብር\s*ክፈል|ካርድ\s*ላክ|አየር\s*ሰዓት\s*ላክ)",
+    r"(ገንዘብ\b.*?\bወደ\b.*?\b(ላክ|አስገባ|ክፈል))",
+    r"(የአገልግሎት\s*ክፍያ|የማስኬጃ\s*ክፍያ|ቅድመ\s*ክፍያ|ታክስ\s*ክፈል|የምዝገባ\s*ክፍያ)",
 ]
 
 # 6. Impersonation of Banks, Telecoms & Official Bodies
 _IMPERSONATION_PATTERNS: List[str] = [
-    r"\b(cbe|commercial\s+bank|bank\s+of\s+ethiopia|telebirr|ethio\s*telecom|boa|awash\s+bank|dashen\s+bank|cbe\s*birr)\b",
-    r"(ንግድ\s*ባንክ|ኢትዮ\s*ቴሌኮም|ቴሌብር|አዋሽ\s*ባንክ|ዳሽን\s*ባንክ|አቢሲንያ\s*ባንክ)",
+    r"\b(we\s+are|this\s+is|i\s+am)\s+(from\s+)?(telebirr|cbe|commercial\s+bank|ethio\s*telecom|awash\s+bank|dashen\s+bank|cbe\s*birr|bank\s+of\s+ethiopia|abyssinia\s+bank)\b",
+    r"\b(from|sender)\s*:\s*(telebirr|cbe|commercial\s+bank|ethio\s*telecom|awash\s+bank|dashen\s+bank|cbe\s*birr|bank\s+of\s+ethiopia)\b",
+    r"\b(telebirr|cbe|commercial\s+bank|ethio\s*telecom|awash\s+bank|dashen\s+bank|cbe\s*birr|bank\s+of\s+ethiopia)\s+(support|helpdesk|customer\s+care|customer\s+service|security\s+team|fraud\s+department|official\s+notice|admin)\b",
+    r"(እኛ\s*ከ\s*(ቴሌብር|ኢትዮ\s*ቴሌኮም|ንግድ\s*ባንክ|አዋሽ|ዳሽን|አቢሲንያ|cbe|telebirr)\s*ነን)",
+    r"(ይህ\s*ከ\s*(ቴሌብር|ኢትዮ\s*ቴሌኮም|ንግድ\s*ባንክ|አዋሽ|ዳሽን|አቢሲንያ|cbe|telebirr)\s*ነው)",
+    r"(ከ\s*(ቴሌብር|ኢትዮ\s*ቴሌኮም|ንግድ\s*ባንክ|አዋሽ|ዳሽን|cbe|telebirr)\s*(የተላከ|የደንበኞች\s*አገልግሎት|የደህንነት\s*ክፍል|ኦፊሴላዊ\s*ማስታወቂያ))",
     r"\b(customer\s+support|security\s+team|helpdesk|admin|official\s+notice|system\s+administrator)\b",
     r"(የደንበኞች\s*አገልግሎት|የደህንነት\s*ክፍል|ኦፊሴላዊ\s*መልእክት|የስርዓት\s*አስተዳዳሪ)",
-    r"\b(fbi|revenue\s+authority|customs|ethiopian\s+government|ministry)\b",
-    r"(የገቢዎች\s*ሚኒስቴር|ጉሙሩክ|መንግስታዊ|የኢትዮጵያ\s*ንግድ\s*ባንክ)",
+    r"\b(fbi|revenue\s+authority|customs\s+office|ministry\s+of\s+revenue|ethiopian\s+revenue)\b",
+    r"(የገቢዎች\s*ሚኒስቴር|ጉሙሩክ\s*ባለስልጣን|የፌዴራል\s*ፖሊስ)",
 ]
 
 # 7. Account Verification & Login Phishing
@@ -118,7 +125,7 @@ _VERIFICATION_PATTERNS: List[str] = [
 _CTA_PATTERNS: List[str] = [
     r"\b(click\s+(on\s+)?(this|the)?\s*link|open\s+(this|the)?\s*link|visit\s+(our)?\s*website|tap\s+here)\b",
     r"(እዚህ\s*ይጫኑ|ሊንኩን\s*ይክፈቱ|ተጫን|ይጎብኙ|እዚህ\0*ይግቡ)",
-    r"(https?://|www\.|bit\.ly|t\.me|tinyurl\.com|cutt\.ly|ngrok\.io|serveo\.net)",
+    r"\b(bit\.ly|tinyurl\.com|cutt\.ly|ngrok\.io|serveo\.net)\b",
     r"\b(fill\s+out\s+(this|the)\s+form|download\s+attachment|install\s+this\s+app)\b",
     r"(ፎርሙን\s*ይምሉ|አፕሊኬሽኑን\s*ያወርዱ|አፕ\s*ጭን)",
 ]
@@ -274,3 +281,65 @@ def analyze_security_rules(message: str, url_indicators: List[str] = None) -> Di
         "social_engineering_indicators": se_indicators,
         "threat_type": threat_type
     }
+
+
+def detect_claimed_identity(message: str) -> str | None:
+    """Detects if a message explicitly claims to represent an organization.
+    Returns the canonical identity key (e.g. 'telebirr', 'cbe', 'ethiotelecom')
+    or None if no explicit representation claim exists.
+    """
+    if not message or not isinstance(message, str):
+        return None
+    msg_lower = message.lower()
+
+    # Telebirr explicit representation claims
+    if re.search(
+        r"\b(we\s+are|this\s+is|i\s+am)\s+(from\s+)?telebirr\b|"
+        r"\b(from|sender)\s*:\s*telebirr\b|"
+        r"\btelebirr\s+(support|helpdesk|customer\s+care|customer\s+service|security\s+team)\b|"
+        r"(እኛ\s*ከ\s*ቴሌብር\s*ነን|ይህ\s*ከ\s*ቴሌብር\s*ነው|ከ\s*ቴሌብር\s*(የተላከ|የደንበኞች|የደህንነት))",
+        msg_lower,
+    ):
+        return "telebirr"
+
+    # Commercial Bank of Ethiopia explicit representation claims
+    if re.search(
+        r"\b(we\s+are|this\s+is|i\s+am)\s+(from\s+)?(cbe|commercial\s+bank)\b|"
+        r"\b(from|sender)\s*:\s*(cbe|commercial\s+bank)\b|"
+        r"\b(cbe|commercial\s+bank)\s+(support|helpdesk|customer\s+care|customer\s+service|security\s+team)\b|"
+        r"(እኛ\s*ከ\s*ንግድ\s*ባንክ\s*ነን|ይህ\s*ከ\s*ንግድ\s*ባንክ\s*ነው|ከ\s*ንግድ\s*ባንክ\s*(የተላከ|የደንበኞች|የደህንነት))",
+        msg_lower,
+    ):
+        return "cbe"
+
+    # Ethio Telecom explicit representation claims
+    if re.search(
+        r"\b(we\s+are|this\s+is|i\s+am)\s+(from\s+)?ethio\s*telecom\b|"
+        r"\b(from|sender)\s*:\s*ethio\s*telecom\b|"
+        r"\bethio\s*telecom\s+(support|helpdesk|customer\s+care|customer\s+service|security\s+team)\b|"
+        r"(እኛ\s*ከ\s*ኢትዮ\s*ቴሌኮም\s*ነን|ይህ\s*ከ\s*ኢትዮ\s*ቴሌኮም\s*ነው|ከ\s*ኢትዮ\s*ቴሌኮም\s*(የተላከ|የደንበኞች|የደህንነት))",
+        msg_lower,
+    ):
+        return "ethiotelecom"
+
+    # Awash Bank explicit claims
+    if re.search(
+        r"\b(we\s+are|this\s+is|i\s+am)\s+(from\s+)?awash\s+bank\b|"
+        r"\b(from|sender)\s*:\s*awash\s+bank\b|"
+        r"\bawash\s+bank\s+(support|helpdesk|customer\s+care|security\s+team)\b|"
+        r"(እኛ\s*ከ\s*አዋሽ\s*ነን|ይህ\s*ከ\s*አዋሽ\s*ነው|ከ\s*አዋሽ\s*(የተላከ|የደንበኞች))",
+        msg_lower,
+    ):
+        return "awash"
+
+    # Dashen Bank explicit claims
+    if re.search(
+        r"\b(we\s+are|this\s+is|i\s+am)\s+(from\s+)?dashen\s+bank\b|"
+        r"\b(from|sender)\s*:\s*dashen\s+bank\b|"
+        r"\bdashen\s+bank\s+(support|helpdesk|customer\s+care|security\s+team)\b|"
+        r"(እኛ\s*ከ\s*ዳሽን\s*ነን|ይህ\s*ከ\s*ዳሽን\s*ነው|ከ\s*ዳሽን\s*(የተላከ|የደንበኞች))",
+        msg_lower,
+    ):
+        return "dashen"
+
+    return None

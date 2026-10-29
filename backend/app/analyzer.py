@@ -8,7 +8,7 @@ import numpy as np
 
 from ml.preprocessing.text_cleaner import preprocess_message
 from ml.preprocessing.language_detector import UnicodeLanguageDetector
-from detection.rules.security_rules import detect_indicators
+from detection.rules.security_rules import detect_indicators, detect_claimed_identity
 from detection.url_analysis.url_analyzer import analyze_urls
 from detection.risk_engine.risk_engine import (
     calculate_risk,
@@ -21,6 +21,7 @@ from backend.app.phone_reputation import (
     lookup_phone_number,
     extract_phone_numbers_from_text,
     verify_sender_identity,
+    is_known_official_sender,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -118,12 +119,29 @@ def analyze_message(
     security_indicators = detect_indicators(message)
     urls, url_indicators = analyze_urls(message)
 
+    # Resolve actual sender (from sender_phone or sender_identifier)
+    actual_sender = sender_phone or sender_identifier
+
+    # Infer claimed identity if not explicitly provided, only when message makes an explicit representation claim
+    effective_claimed = claimed_sender
+    if not effective_claimed:
+        effective_claimed = detect_claimed_identity(message)
+
     # Sender identity verification against known official senders
-    sender_verification = verify_sender_identity(sender_phone, claimed_sender)
+    sender_verification = verify_sender_identity(actual_sender, effective_claimed)
     sender_mismatch = bool(sender_verification.get("risk_indicator"))
+    is_known_sender = (
+        bool(sender_verification.get("is_known_sender"))
+        or is_known_official_sender(actual_sender)
+        or sender_verification.get("status") in ("match", "known_sender")
+    )
+
+    # If the sender actually matches the claimed legitimate organisation, remove possible_impersonation
+    if sender_verification.get("status") == "match" and "possible_impersonation" in security_indicators:
+        security_indicators.remove("possible_impersonation")
 
     # Preserve unique indicator list ordering
-    all_indicators = security_indicators + url_indicators
+    all_indicators = list(security_indicators) + list(url_indicators)
     if sender_mismatch:
         all_indicators.append("sender_identity_mismatch")
     indicators = list(dict.fromkeys(all_indicators))
@@ -135,6 +153,7 @@ def analyze_message(
         ml_pred=ml_pred,
         ml_prob=ml_prob,
         sender_mismatch=sender_mismatch,
+        is_known_sender=is_known_sender,
         urls=urls,
     )
     risk_score = breakdown["final_risk_score"]
@@ -142,7 +161,7 @@ def analyze_message(
 
     # 5. Phone reputation lookups
     try:
-        phone_reputation = lookup_phone_number(sender_phone)
+        phone_reputation = lookup_phone_number(actual_sender)
     except RuntimeError:
         phone_reputation = {
             "status": "service_unavailable",
